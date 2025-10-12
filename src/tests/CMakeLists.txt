@@ -1,2 +1,2 @@
-add_executable(compile_test compile_test.cpp)
-target_link_libraries(compile_test)
+add_executable(compile_test compile_test.cpp constexpr_tests.cpp)
+add_executable(hello_world hello_world.cpp)

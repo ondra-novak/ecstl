@@ -96,11 +96,11 @@ public:
     using Super = Storage<Entity, T>;
 
     ///inicialize default
-    GenericComponentPool() = default;
+    constexpr GenericComponentPool() = default;
 
     ///inicialize with database instance
     template<typename DB>
-    GenericComponentPool(DB &) {}   //we don't need database
+    constexpr GenericComponentPool(DB &) {}   //we don't need database
 
     virtual const ComponentTypeID &get_type() const {
         return component_type_id<T>;

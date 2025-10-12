@@ -1,13 +1,13 @@
 #pragma once
 
 #include "paired_iterator.hpp"
-#include <unordered_map>
+#include "open_hash_map.hpp"
 #include <vector>
 
 namespace ecstl {
 
 template<typename K, typename V, typename Hasher = std::hash<K>, typename Equal = std::equal_to<K> >
-class SparseMap {
+class IndexedFlatMap {
 public:
 
     using VectorK = std::vector<K>;
@@ -37,6 +37,8 @@ public:
     requires(std::is_constructible_v<K, Key> && std::is_constructible_v<V, Args...>)
     constexpr auto emplace(Key &&key, Args && ... args) {
         return try_emplace(std::forward<Key>(key), std::forward<Args>(args)...);        
+
+        
     }
 
     constexpr iterator begin() {return build_iterator(0);}
@@ -95,7 +97,7 @@ public:
     }
 
 protected:
-    std::unordered_map<K, std::size_t, Hasher, Equal> _index;
+    OpenHashMap<K, std::size_t, Hasher, Equal> _index;
     std::vector<K> _keys;
     std::vector<V> _values;
 

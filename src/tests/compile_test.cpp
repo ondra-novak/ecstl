@@ -3,9 +3,9 @@
 #include <iostream>
 #include <ranges>
 
-template ecstl::Entity ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::SparseMapStorage>::create_entity(std::string_view);
-template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::SparseMapStorage>::all_of<ecstl::EntityName>();
-template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::SparseMapStorage>::all_of<ecstl::EntityName>() const;
+template ecstl::Entity ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::create_entity(std::string_view);
+template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::all_of<ecstl::EntityName>();
+template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::all_of<ecstl::EntityName>() const;
 
 struct TestComponent {
     int foo;
@@ -27,15 +27,15 @@ int main() {
 
 
     db.for_each_component(aaa, [](ecstl::AnyRef ref){
-        ref.get_if<ecstl::EntityName>().and_then([](const auto &x){std::cout << "Name: " << x.name << std::endl;;});
+        ref.get_if<ecstl::EntityName>().and_then([](const auto &x){std::cout << "Name: " << x << std::endl;;});
     });
     for (const auto &c: db.all_of<ecstl::EntityName>()) {
-        std::cout << c.first << " = " << c.second.name << std::endl;
+        std::cout << c.first << " = " << c.second << std::endl;
     }
 
     for (const auto &q: db.view<ecstl::EntityName, TestComponent>({ecstl::ComponentTypeID{}, example_component})  ) {
         const auto &[e,a,b] = q;
-        std::cout << e << "=" <<  a.name << ":" << b.foo << std::endl;
+        std::cout << e << "=" <<  a << ":" << b.foo << std::endl;
     }
 
     std::cout << db.contains<TestComponent, ecstl::EntityName>(bbb, {example_component}) << std::endl;
@@ -44,7 +44,7 @@ int main() {
     db.group<ecstl::EntityName, TestComponent>({{}, example_component});
 
     for (const auto &c: db.all_of<ecstl::EntityName>()) {
-        std::cout << c.first << " = " << c.second.name << std::endl;
+        std::cout << c.first << " = " << c.second << std::endl;
     }
 
     for (const auto &c: db.all_of<TestComponent>(example_component)) {

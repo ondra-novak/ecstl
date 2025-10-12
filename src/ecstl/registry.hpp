@@ -18,11 +18,75 @@ struct HashOfKey {
 };
 
 
-struct EntityName {
-    std::string name;
+class EntityName {
+public:
+
+    constexpr EntityName(std::string_view n):name(n.begin(), n.end()) {}
+    constexpr operator std::string_view() const {return std::string_view(name.data(), name.size());}  
+    constexpr bool operator==(const EntityName &other) const {
+        return static_cast<std::string_view>(*this) == static_cast<std::string_view>(other);
+    }
+    template<typename IO>
+    friend IO &operator<<(IO &io, const EntityName &en)  {      
+        return (io << static_cast<std::string_view>(en));
+    }
+
+protected:
+    std::vector<char> name;
 };
 
+#if __cpp_lib_constexpr_memory >= 202202L
+template<typename T>
+using UniquePtrConstexpr = std::unique_ptr<T>;
+template<typename T, typename ... Args>
+constexpr UniquePtrConstexpr<T> make_unique_constexpr(Args && ... args) {
+    return std::make_unique<T>(std::forward<Args>(args)...);
+}
+#else
+template<typename T>
+class UniquePtrConstexpr {
+public:
+    constexpr UniquePtrConstexpr() = default;
+    constexpr UniquePtrConstexpr(T *ptr):_ptr(ptr) {}
+    constexpr UniquePtrConstexpr(const UniquePtrConstexpr &) = delete;
+    constexpr UniquePtrConstexpr(UniquePtrConstexpr &&other) noexcept : _ptr(other._ptr) {
+        other._ptr = nullptr;
+    }
+    template<typename U>
+    requires std::is_convertible_v<U*, T*>
+    constexpr UniquePtrConstexpr(UniquePtrConstexpr<U> &&other) noexcept : _ptr(other._ptr) {
+        other._ptr = nullptr;
+    }
+    constexpr UniquePtrConstexpr & operator=(const UniquePtrConstexpr &) = delete;
+    constexpr UniquePtrConstexpr & operator=(UniquePtrConstexpr &&other) noexcept {
+        if (this != &other) {
+            delete _ptr;
+            _ptr = other._ptr;
+            other._ptr = nullptr;
+        }
+        return *this;
+    }
+    constexpr ~UniquePtrConstexpr() {
+        delete _ptr;
+    }
+    constexpr std::add_pointer_t<T> operator->() const {return _ptr;}
+    constexpr std::add_lvalue_reference_t<T> operator*() const {return *_ptr;}
+    constexpr explicit operator bool() const {return _ptr != nullptr;}
+    constexpr std::add_pointer_t<T> get() const {return _ptr;}
 
+protected:
+    T *_ptr=nullptr;
+
+    template<typename U>
+    friend class UniquePtrConstexpr;
+};
+template<typename T, typename ... Args>
+constexpr UniquePtrConstexpr<T> make_unique_constexpr(Args && ... args) {
+    return UniquePtrConstexpr<T>(new T(std::forward<Args>(args)...));
+}
+
+
+#endif
 
 ///Concepts for component visitor functions (non-const)
 template<typename T>
@@ -51,6 +115,8 @@ template<template<class> class PoolType, template<class,class> class Storage >
 class GenericRegistry {
 public:
 
+    constexpr GenericRegistry() = default;
+
     ///Key for component storage
     struct Key {
         /// Type of the component - ID is computed from type T
@@ -62,14 +128,13 @@ public:
          */
         ComponentTypeID _variant_id;    
         constexpr auto operator<=>(const Key&) const = default;
-        friend std::size_t get_hash(const Key &key ) {
-            std::hash<std::uint64_t> hasher;
-            return hasher((key._type_id+key._variant_id).get_id());
+        constexpr friend std::size_t get_hash(const Key &key ) {
+            return (key._type_id+key._variant_id).get_id();
         }
     };
 
     ///Type of component pool pointer
-    using PPool = std::unique_ptr<IComponentPool>;
+    using PPool = UniquePtrConstexpr<IComponentPool>;
 
     ///Create a new entity
     static constexpr Entity create_entity() {
@@ -106,6 +171,10 @@ public:
         auto c = get<EntityName>(entity);
         if (c) return c.value().name;
         else return {};
+    }
+
+    constexpr void set_entity_name(Entity entity, std::string_view name) {
+        set<EntityName>(entity, EntityName{std::string(name)});
     }
 
     ///Add or set a component for an entity
@@ -152,6 +221,53 @@ public:
         if (!r.second) r.first->second = std::move(data);
         return r.first->second;
     }
+
+    ///Add a component for an entity
+    /** @tparam T Type of the component to be added
+     *  @tparam Arg0 Type of the first argument for component construction or ComponentTypeID for variant ID
+     *  @tparam Args Types of additional arguments for component construction
+     *  @param e Entity to which the component is to be added
+     *  @param variant_id Optional component variant ID to differentiate multiple components of the same type. 
+     *          If not provided, default component variant ID (0) is used. In this case, 
+     *          Arg0 is treated as the first argument for component construction.
+     *  @param args Arguments for constructing the component
+     *  @return Reference to the component data stored in the registry
+     * This overload uses default component variant ID (0) if variant_id is not provided.
+     */
+    template<typename T, typename Arg0, typename ... Args>
+    constexpr T &emplace(Entity e, Arg0 &&variant_id, Args && ... args) {
+        if constexpr(std::is_same_v<std::decay_t<Arg0>, ComponentTypeID>) {
+            PoolType<T> *p = create_component_if_needed<T>(variant_id);
+            auto r = p->try_emplace(e, std::forward<Args>(args)...);
+            if (!r.second) {
+                std::destroy_at(std::addressof(r.first->second));
+                std::construct_at(std::addressof(r.first->second), std::forward<Args>(args)...);
+            }
+            return r.first->second;        
+        } else {
+            return emplace(e, ComponentTypeID{}, std::forward<Arg0>(variant_id), std::forward<Args>(args)...);
+        }
+    }
+
+    ///Add a component for an entity with default component variant ID (0)
+    /** @tparam T Type of the component to be added
+     *  @param e Entity to which the component is to be added
+     *  @return Reference to the component data stored in the registry
+     * This overload uses default component variant ID (0).
+     * 
+     * This overload is just special case of the above emplace() method with default variant ID.
+     */
+    template<typename T>
+    constexpr T &emplace(Entity e) {
+        PoolType<T> *p = create_component_if_needed<T>({});
+        auto r = p->try_emplace(e);
+        if (!r.second) {
+            std::destroy_at(std::addressof(r.first->second));
+            std::construct_at(std::addressof(r.first->second));
+        }
+        return r.first->second;        
+    }
+
 
     ///Remove a component of type T from an entity (if it exists)
     /** @tparam T Type of the component to be removed
@@ -240,10 +356,10 @@ public:
      */
     template<typename T>
     constexpr auto find(Entity e, ComponentTypeID variant_id) const {
-        using Iter = decltype(std::declval<PoolType<T> >().begin());
+        using Iter = decltype(std::declval<const PoolType<T> >().begin());
         auto iter = _storage.find(Key{component_type_id<T>, variant_id});
         if (iter == _storage.end()) return Iter();
-        auto pp = static_cast<PoolType<T> *>(iter->second.get());
+        auto pp = static_cast<const PoolType<T> *>(iter->second.get());
         return pp->find(e);
     }
 
@@ -341,7 +457,8 @@ public:
     template<ComponentVisitor Fn>
     void for_each_component(Entity e, Fn &&fn) {
         for (const auto &[k, v]: _storage) {
-            AnyRef c = v->entity(e);
+            IComponentPool *p = v.get();
+            AnyRef c = p->entity(e);
             if (c) {
                 if constexpr(std::is_invocable_v<Fn, AnyRef>) {
                     fn(c);
@@ -529,11 +646,11 @@ protected:
     Storage<Key, PPool> _storage;
 
     template<typename T>
-    PoolType<T> *create_component_if_needed(ComponentTypeID sub) {
+    constexpr PoolType<T> *create_component_if_needed(ComponentTypeID sub) {
         Key k{component_type_id<T>, sub};
         auto iter = _storage.find(k);
         if (iter == _storage.end()) {
-            return  static_cast<PoolType<T> *>(_storage.try_emplace(k, std::make_unique<PoolType<T> >()).first->second.get());
+            return  static_cast<PoolType<T> *>(_storage.try_emplace(k, make_unique_constexpr<PoolType<T> >()).first->second.get());
         } else {
             return static_cast<PoolType<T> *>(iter->second.get());
         }

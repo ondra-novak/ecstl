@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <atomic>
 #include <compare>
+#include <source_location>
+#include "hasher.hpp"
 
 
 namespace ecstl {
@@ -19,7 +21,8 @@ public:
      * It also ensures that the ID generator is updated to avoid ID collisions.
      * Useful for deserialization or cloning entities.
      */
-    Entity(std::uint64_t id):_id(id) {
+    constexpr Entity(std::uint64_t id):_id(id) {
+        if (std::is_constant_evaluated()) return;
         auto r = _idgen.load();
         while (id > r && !_idgen.compare_exchange_weak(r, id));        
     }
@@ -27,6 +30,11 @@ public:
     /// Create a new unique entity
     static Entity create()  {        
         return Entity(_idgen.fetch_add(1)+1);
+    }
+
+    static consteval Entity create_consteval(std::source_location loc = std::source_location::current()) {
+        std::uint64_t idgen = 1 + get_hash(loc.file_name()) + loc.line() + (std::uint64_t(loc.column()) << 16);
+        return Entity(idgen);
     }
 
     constexpr bool operator==(const Entity &) const  = default;
@@ -38,9 +46,8 @@ public:
         return (io << "#" << e._id);
     }
 
-    friend std::size_t get_hash(const Entity &e) {
-        std::hash<std::uint64_t> hasher;
-        return hasher(e._id);
+    friend constexpr std::size_t get_hash(const Entity &e) {
+        return e._id;
     }
 
 protected:
