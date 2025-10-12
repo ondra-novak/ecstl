@@ -31,6 +31,7 @@ namespace ecstl {
 
         static_assert(sizeof...(Components) >= 1, "At least one component type must be specified");
 
+
         using CompTuple = std::tuple<Components...>;
         using SubIDS = std::array<ComponentTypeID, std::tuple_size_v<CompTuple> >;
         using Ranges = std::tuple<decltype(std::declval<Registry>()->template all_of<Components>())...>;
@@ -63,7 +64,7 @@ namespace ecstl {
                     check_after_advance();
                 }
 
-            iterator &operator++() {
+            constexpr iterator &operator++() {
                 advance();
                 if (!check_iterators_valid()) {
                     check_after_advance();
@@ -71,17 +72,17 @@ namespace ecstl {
                 return *this;
             }
 
-            iterator operator++(int) {
+            constexpr iterator operator++(int) {
                 iterator x = *this;
                 advance();
                 return x;
             }
 
-            bool operator==(const iterator &other) const {
+            constexpr bool operator==(const iterator &other) const {
                 return is_equal<0>(other);
             }
 
-            Values operator*() const {
+            constexpr Values operator*() const {
                 const Entity &ent = std::get<0>(_iter)->first;
                 return std::apply([&](auto &... iters){
                     return std::tie(ent,iters->second...);
@@ -98,7 +99,7 @@ namespace ecstl {
 
             
             template<unsigned int N = 0>
-            Entity get_entity() const {
+            constexpr Entity get_entity() const {
                 if constexpr(N == std::tuple_size_v<Iterators>) {
                     return {};
                 } else {
@@ -108,13 +109,13 @@ namespace ecstl {
             }
 
             template<unsigned int N = 0>
-            bool setup_iterators(Entity e)  {
+            constexpr bool setup_iterators(Entity e)  {
                 if constexpr(N == std::tuple_size_v<Iterators>) {
                     return true;
                 } else {
                     if (N != _master )  {
                         auto i = _reg->template find<std::tuple_element_t<N, CompTuple> >(e,_ids[N]);
-                        if (i == std::get<N>(_ends)) return false;
+                        if (i == std::get<N>(_ends)) return false;                        
                         std::get<N>(_iter) = i;
                     } 
                     return setup_iterators<N+1>(e);
@@ -122,7 +123,7 @@ namespace ecstl {
             }
 
             template<unsigned int N = 0>
-            bool is_end() const {
+            constexpr bool is_end() const {
                 if constexpr(N == std::tuple_size_v<Iterators>) {
                     return true;
                 } else {
@@ -131,7 +132,7 @@ namespace ecstl {
                 }
             }
 
-            void advance()  {
+            constexpr void advance()  {
                 std::apply([&](auto & ... iter){
                     (++iter,...);
                 }, _iter);
@@ -139,7 +140,7 @@ namespace ecstl {
 
 
             template<unsigned int N = 0>
-            bool check_iterators_valid() const {
+            constexpr bool check_iterators_valid() const {
                 if constexpr (N == std::tuple_size_v<Iterators>) {
                     return true;
                 } else {
@@ -149,7 +150,7 @@ namespace ecstl {
                 }
             }
 
-            void check_after_advance() {
+            constexpr void check_after_advance() {
                 while (!is_end<0>()) {
                     Entity e = get_entity();
                     if (setup_iterators<0>(e)) return;
@@ -158,7 +159,7 @@ namespace ecstl {
             }
 
             template<unsigned int N = 0>
-            bool is_equal(const iterator &other) const {
+            constexpr bool is_equal(const iterator &other) const {
                 if constexpr(N == std::tuple_size_v<Iterators>) {
                     return true;
                 } else {
@@ -199,7 +200,7 @@ namespace ecstl {
         unsigned int _master = {};
 
         template<unsigned int N = 0>
-        std::ptrdiff_t find_best(unsigned int &ret) {
+        constexpr std::ptrdiff_t find_best(unsigned int &ret) {
             if constexpr(N == std::tuple_size_v<Ranges>) {
                 return std::numeric_limits<std::ptrdiff_t>::max();                
             } else {

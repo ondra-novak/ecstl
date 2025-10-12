@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <memory>
 #include <algorithm>
+#include <vector>
 
 namespace ecstl {
 
@@ -21,7 +22,7 @@ struct HashOfKey {
 class EntityName {
 public:
 
-    constexpr EntityName(std::string_view n):name(n.begin(), n.end()) {}
+    constexpr explicit EntityName(std::string_view n):name(n.begin(), n.end()) {}
     constexpr operator std::string_view() const {return std::string_view(name.data(), name.size());}  
     constexpr bool operator==(const EntityName &other) const {
         return static_cast<std::string_view>(*this) == static_cast<std::string_view>(other);
@@ -169,12 +170,12 @@ public:
      */
     constexpr std::string_view get_entity_name(Entity entity) const {
         auto c = get<EntityName>(entity);
-        if (c) return c.value().name;
+        if (c) return c.value();
         else return {};
     }
 
     constexpr void set_entity_name(Entity entity, std::string_view name) {
-        set<EntityName>(entity, EntityName{std::string(name)});
+        set<EntityName>(entity, EntityName(name));
     }
 
     ///Add or set a component for an entity
@@ -300,7 +301,7 @@ public:
      */
     template<typename T>
     constexpr const OptionalRef<const T> get(Entity e) const {
-        return get(e, {});
+        return get<T>(e, {});
     }
 
     ///Get a const reference to a component of type T with specific component variant ID for an entity (if it exists)
@@ -371,6 +372,32 @@ public:
      */
     template<typename T>
     constexpr auto find(Entity e) const {
+        return get(e, {});
+    }
+
+        ///Find component of type T with specific component variant ID for an entity (if it exists)
+    /** @tparam T Type of the component to be retrieved
+     *  @param e Entity whose component is to be retrieved   
+     *  @param variant_id component variant ID to differentiate multiple components of the same type
+     *  @return Iterator to the component data if it exists, end iterator otherwise
+     */
+    template<typename T>
+    constexpr auto find(Entity e, ComponentTypeID variant_id) {
+        using Iter = decltype(std::declval< PoolType<T> >().begin());
+        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
+        if (iter == _storage.end()) return Iter();
+        auto pp = static_cast<PoolType<T> *>(iter->second.get());
+        return pp->find(e);
+    }
+
+    ///Find component of type T for an entity (if it exists)
+    /** @tparam T Type of the component to be retrieved
+     *  @param e Entity whose component is to be retrieved   
+     *  @return Iterator to the component data if it exists, end iterator otherwise
+     *  This overload uses default component variant ID (0).
+     */
+    template<typename T>
+    constexpr auto find(Entity e)  {
         return get(e, {});
     }
 
@@ -583,7 +610,7 @@ public:
      * operation to be sufficiently efficient, all pools in the given combination should be optimized.
      */
     template<typename T, typename ... Uvs>
-    bool optimize_pool(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
+    constexpr bool optimize_pool(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
         auto mitr = _storage.find(Key{component_type_id<T>, variant_t});
         if (mitr == _storage.end() ) return false;
         auto c = mitr->second.get();
@@ -607,7 +634,7 @@ public:
         });
         std::sort(sortMap.begin(), sortMap.end());
 
-        auto new_pool = std::make_unique<PoolType<T> >();
+        auto new_pool = make_unique_constexpr<PoolType<T> >();
         new_pool->reserve(std::distance(b, e));
         std::for_each(b, st, [&](auto &&itm){
             new_pool->emplace(std::move(itm.first), std::move(itm.second));
@@ -627,18 +654,18 @@ public:
     }   
 
     template<typename T, typename ... Uvs>
-    bool optimize_pool(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
+    constexpr bool optimize_pool(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
         return optimize_pool<T, Uvs...>(variant_t, std::span<const ComponentTypeID>(variant_uvs));
     }
 
     template<typename ... Components>
-    bool group(std::span<const ComponentTypeID> variants = {}) {
-        return optimize_rotate<0, Components...>(variants);
+    constexpr bool group(std::span<const ComponentTypeID> variants = {}) {
+        return optimize_rotate<Components...>(variants);
     }
 
     template<typename ... Components>
-    bool group(std::initializer_list<ComponentTypeID> variants) {
-        return optimize_rotate<0, Components...>(variants);
+    constexpr bool group(std::initializer_list<ComponentTypeID> variants) {
+        return optimize_rotate<Components...>(variants);
     }
 
 
@@ -669,18 +696,26 @@ protected:
         else return contains_impl<Components...>(e, variants);
     }
 
-    template<unsigned int N, typename T, typename ... Components>
+    template<typename T, typename ... Components>
     constexpr bool optimize_rotate(std::span<const ComponentTypeID> variants)  {
         constexpr auto cnt = sizeof...(Components)+1;
+        std::array<ComponentTypeID, cnt> tmp;        
+        std::copy(variants.begin(), variants.end(), tmp.begin());
+        return optimize_rotate_2<0, cnt, T, Components...>(tmp);
+    }
+
+
+    template<unsigned int N, std::size_t cnt,  typename T, typename ... Components>
+    constexpr bool optimize_rotate_2(std::array<ComponentTypeID, cnt> &var_tmp)  {
         if constexpr(N == cnt) {
             return true;
-        } else {
-            auto sub = variants.subspan<1>();
-            if (!optimize_pool<T, Components...>(variants.front(), sub)) return false;
-            std::array<ComponentTypeID, cnt> tmp;        
-            auto iter = std::copy(sub.begin(), sub.end(), tmp.begin());
-            *iter = variants.front();
-            return optimize_rotate<N+1, Components..., T>(tmp);
+        } else {            
+            auto sub = std::span<const ComponentTypeID>(var_tmp).subspan<1>();
+            auto front = var_tmp.front();
+            if (!optimize_pool<T, Components...>(front, sub)) return false;            
+            auto iter = std::copy(sub.begin(), sub.end(), var_tmp.begin());
+            *iter = front;
+            return optimize_rotate_2<N+1, cnt, Components..., T>(var_tmp);
         }
 
 

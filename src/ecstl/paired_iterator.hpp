@@ -14,6 +14,7 @@ public:
     using reference = value_type;
     using difference_type = std::ptrdiff_t;
     using iterator_category = std::random_access_iterator_tag;
+
     class pointer {
     public:
         constexpr pointer(value_type vt):_vt(std::move(vt)) {}
@@ -91,6 +92,9 @@ public:
 private:
     T _t_it;
     U _u_it;
+
+    template<typename , typename>
+    friend class paired_iterator;
 };
 }
 

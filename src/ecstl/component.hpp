@@ -69,17 +69,17 @@ constexpr auto component_type_id = ComponentTraits<T>::id;
 ///Interface for component storage
 class IComponentPool {
 public:
-    virtual ~IComponentPool() = default;
+    constexpr virtual ~IComponentPool() = default;
     /// Get the type of the component
-    virtual const ComponentTypeID &get_type() const = 0;
+    constexpr virtual const ComponentTypeID &get_type() const = 0;
     /// Erase the component data for a given entity
-    virtual void erase(Entity e)  = 0;
+    constexpr virtual void erase(Entity e)  = 0;
     /// Count of components
-    virtual size_t size() const = 0;
+    constexpr virtual size_t size() const = 0;
     /// Retrieve entity as AnyRef if exists.
-    virtual AnyRef entity(Entity e) = 0;
+    constexpr virtual AnyRef entity(Entity e) = 0;
     /// Retrieve entity as ConstAnyRef if exists.
-    virtual ConstAnyRef entity(Entity e) const = 0;
+    constexpr virtual ConstAnyRef entity(Entity e) const = 0;
 };
 
 

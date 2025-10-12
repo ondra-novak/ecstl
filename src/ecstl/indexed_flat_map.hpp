@@ -90,7 +90,7 @@ public:
 
     constexpr std::size_t size() const {return _keys.size();}
 
-    void reserve(std::size_t sz) {
+    constexpr void reserve(std::size_t sz) {
         _keys.reserve(sz);
         _values.reserve(sz);
 

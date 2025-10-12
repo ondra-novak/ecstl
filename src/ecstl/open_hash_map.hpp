@@ -23,7 +23,7 @@ namespace ecstl {
             constexpr  ~Item() {
                 clear();
             }
-            void clear() {
+            constexpr void clear() {
                 if (state == State::occupied) {
                     std::destroy_at(&key_value);
                     state = State::empty;
@@ -117,7 +117,7 @@ namespace ecstl {
 
         template<typename Key, typename ... Args>
         constexpr auto try_emplace(Key &&key, Args && ... args) {
-            if (_items.size() == 0 || (_items.size()*3/4) < size()) {
+            if ((_items.size()*3/5) <= size()) {
                 expand();
             }
             auto idx = map_key(key);            
@@ -228,18 +228,26 @@ namespace ecstl {
         std::size_t _size = 0;
 
         constexpr std::size_t map_key(const K &k) const {
-            return _hasher(k) % _items.size();
+            std::size_t hash = _hasher(k);
+            if constexpr(sizeof(std::size_t) == 4) {
+                constexpr uint32_t multiplier = 2654435761U;
+                hash ^= (hash >> 5) ^ (hash << 7);
+                hash *= multiplier;
+            } else {
+                constexpr uint64_t multiplier = 11400714819323198485ULL;
+                hash ^= (hash >> 7) ^ (hash << 11);
+                hash *= multiplier;
+            }
+            return hash % _items.size();
         }
 
         constexpr void expand() {
-            auto newsz = std::min<std::size_t>(5,_items.size())*2+1;
+            auto newsz = std::max<std::size_t>(5,_items.size())*2+1;
             auto old = std::move(_items);
             _items.resize(newsz);
             for (Item &c: old) {
                 if (c.state == State::occupied) {
-                    Item &t = _items[map_key(c.key_value.first)];
-                    std::construct_at(&t.key_value, std::move(c.key_value));
-                    t.state = c.state;
+                    try_emplace(std::move(c.key_value.first), std::move(c.key_value.second));
                 }
             }            
         }
