@@ -668,6 +668,19 @@ public:
         return optimize_rotate<Components...>(variants);
     }
 
+    ///Find an entity by its name (if it has EntityName component)
+    /** @param name Name of the entity to be found
+     *  @return Optional containing the entity if found, empty Optional otherwise
+     *  
+     * @note in case of multiple entities with the same name, the first one found is returned
+     */      
+    constexpr std::optional<Entity> find_by_name(const std::string_view name) const {
+        auto view = this->view<EntityName>();
+        for (auto [e, en]: view) {
+            if (static_cast<std::string_view>(en) == name) return e;
+        }
+        return {};
+    }
 
 protected:
     Storage<Key, PPool> _storage;

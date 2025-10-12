@@ -57,8 +57,6 @@ void testOpenHash() {
 
 int main() {
 
-    testOpenHash();
-
     ecstl::Registry db;
     auto aaa = db.create_entity("aaa");
     auto bbb = db.create_entity("bbb");
