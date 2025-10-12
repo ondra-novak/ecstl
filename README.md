@@ -92,26 +92,26 @@ Assume r =  Registry();
 
 #### Component Management
 
-* **r.set<ComponentType>(Entity e, ComponentType component_data)** - Assign a component to an entity
-* **r.set<ComponentType>(Entity e, ComponentTypeID variant, ComponentType component_data)** - Assign a component to an entity with a specific variant
-* **r.emplace<ComponentType>(Entity e, Args &&... args )** - Assign a component to an entity, constructing it in place
-* **r.emplace<ComponentType>(Entity e, ComponentTypeID variant, Args &&... args)** - Assign a component to an entity with a specific variant, constructing it in place
-* **r.get<ComponentType>(Entity e)** - Get a reference to a component of an entity. Both const and non-const versions are available.
-* **r.get<ComponentType>(Entity e, ComponentTypeID variant)** - Get a reference to a component of an entity with a specific variant. Both const and non-const versions are available
-* **r.remove<ComponentType>(Entity e)** - Remove a component from an entity
-* **r.remove<ComponentType>(Entity e, ComponentTypeID variant)** - Remove a component with a specific variant from an entity
-* **r.find<ComponentType>(Entity e)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
-* **r.find<ComponentType>(Entity e, ComponentTypeID variant)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
-* **r.remove_all_of<ComponentType>()** - Remove all components of a specific type from all entities.
-* **r.remove_all_of<ComponentType>(ComponentTypeID variant)** - Remove all components of a specific type and variant from all entities.
+* **r.set&lt;ComponentType&gt;(Entity e, ComponentType component_data)** - Assign a component to an entity
+* **r.set&lt;ComponentType&gt;(Entity e, ComponentTypeID variant, ComponentType component_data)** - Assign a component to an entity with a specific variant
+* **r.emplace&lt;ComponentType&gt;(Entity e, Args &&... args )** - Assign a component to an entity, constructing it in place
+* **r.emplace&lt;ComponentType&gt;(Entity e, ComponentTypeID variant, Args &&... args)** - Assign a component to an entity with a specific variant, constructing it in place
+* **r.get&lt;ComponentType&gt;(Entity e)** - Get a reference to a component of an entity. Both const and non-const versions are available.
+* **r.get&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Get a reference to a component of an entity with a specific variant. Both const and non-const versions are available
+* **r.remove&lt;ComponentType&gt;(Entity e)** - Remove a component from an entity
+* **r.remove&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Remove a component with a specific variant from an entity
+* **r.find&lt;ComponentType&gt;(Entity e)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
+* **r.find&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
+* **r.remove_all_of&lt;ComponentType&gt;()** - Remove all components of a specific type from all entities.
+* **r.remove_all_of&lt;ComponentType&gt;(ComponentTypeID variant)** - Remove all components of a specific type and variant from all entities.
 
 #### Queries and Iteration
 
-* **r.all_of<ComponentType>()** - Get a range of all components of a specific type. Both const and non-const versions are available.
-* **r.all_of<ComponentType>(ComponentTypeID variant)** - Get a range of all components of a specific type and variant. Both const and non-const versions are available.
-* **r.view<ComponentTypes...>(std::initializer_list<CompoinentTypeID> variants = {})** - Create a view for iterating over entities with specific component types and optional variants.
-* **r.contains<ComponentTypes...>(Entity e, std::initializer_list<CompoinentTypeID> variants = {})** - Check if an entity contains all specified component types and optional variants.
-* **r.group<ComponentTypes...>(std::initializer_list<CompoinentTypeID> variants = {})** - Create a group for iterating over entities with specific component types and optional variants. Groups are optimized for frequent access.
+* **r.all_of&lt;ComponentType&gt;()** - Get a range of all components of a specific type. Both const and non-const versions are available.
+* **r.all_of&lt;ComponentType&gt;(ComponentTypeID variant)** - Get a range of all components of a specific type and variant. Both const and non-const versions are available.
+* **r.view<ComponentTypes...>(std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Create a view for iterating over entities with specific component types and optional variants.
+* **r.contains<ComponentTypes...>(Entity e, std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Check if an entity contains all specified component types and optional variants.
+* **r.group<ComponentTypes...>(std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Create a group for iterating over entities with specific component types and optional variants. Groups are optimized for frequent access.
 * **r.for_each_component(Entity e, Callback &)** - Iterate over all components of an entity, invoking the provided callback for each component.
 
 #### Entity Naming
@@ -120,9 +120,5 @@ Assume r =  Registry();
 * **r.set_entity_name(Entity e, std::string_view name)** - Set the name
 * **r.find_entity_by_name(std::string_view name)** - Find an entity by its name. Returns optional<Entity>.
 
-
-
-
-
-
-*
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
