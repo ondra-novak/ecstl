@@ -10,6 +10,7 @@
 #include <memory>
 #include <algorithm>
 #include <vector>
+#include "polyfill/unique_ptr.hpp"
 
 namespace ecstl {
 
@@ -35,59 +36,6 @@ public:
 protected:
     std::vector<char> name;
 };
-
-#if __cpp_lib_constexpr_memory >= 202202L
-template<typename T>
-using UniquePtrConstexpr = std::unique_ptr<T>;
-template<typename T, typename ... Args>
-constexpr UniquePtrConstexpr<T> make_unique_constexpr(Args && ... args) {
-    return std::make_unique<T>(std::forward<Args>(args)...);
-}
-#else
-template<typename T>
-class UniquePtrConstexpr {
-public:
-    constexpr UniquePtrConstexpr() = default;
-    constexpr UniquePtrConstexpr(T *ptr):_ptr(ptr) {}
-    constexpr UniquePtrConstexpr(const UniquePtrConstexpr &) = delete;
-    constexpr UniquePtrConstexpr(UniquePtrConstexpr &&other) noexcept : _ptr(other._ptr) {
-        other._ptr = nullptr;
-    }
-    template<typename U>
-    requires std::is_convertible_v<U*, T*>
-    constexpr UniquePtrConstexpr(UniquePtrConstexpr<U> &&other) noexcept : _ptr(other._ptr) {
-        other._ptr = nullptr;
-    }
-    constexpr UniquePtrConstexpr & operator=(const UniquePtrConstexpr &) = delete;
-    constexpr UniquePtrConstexpr & operator=(UniquePtrConstexpr &&other) noexcept {
-        if (this != &other) {
-            delete _ptr;
-            _ptr = other._ptr;
-            other._ptr = nullptr;
-        }
-        return *this;
-    }
-    constexpr ~UniquePtrConstexpr() {
-        delete _ptr;
-    }
-    constexpr std::add_pointer_t<T> operator->() const {return _ptr;}
-    constexpr std::add_lvalue_reference_t<T> operator*() const {return *_ptr;}
-    constexpr explicit operator bool() const {return _ptr != nullptr;}
-    constexpr std::add_pointer_t<T> get() const {return _ptr;}
-
-protected:
-    T *_ptr=nullptr;
-
-    template<typename U>
-    friend class UniquePtrConstexpr;
-};
-template<typename T, typename ... Args>
-constexpr UniquePtrConstexpr<T> make_unique_constexpr(Args && ... args) {
-    return UniquePtrConstexpr<T>(new T(std::forward<Args>(args)...));
-}
-
-
-#endif
 
 ///Concepts for component visitor functions (non-const)
 template<typename T>
@@ -133,9 +81,14 @@ public:
             return (key._type_id+key._variant_id).get_id();
         }
     };
+    struct Deleter {
+        constexpr void operator()(IComponentPool *p){
+            p->destroy();
+        }
+    };
 
     ///Type of component pool pointer
-    using PPool = UniquePtrConstexpr<IComponentPool>;
+    using PPool = unique_ptr<IComponentPool, Deleter>;
 
     ///Create a new entity
     static constexpr Entity create_entity() {
@@ -634,7 +587,7 @@ public:
         });
         std::sort(sortMap.begin(), sortMap.end());
 
-        auto new_pool = make_unique_constexpr<PoolType<T> >();
+        auto new_pool = alloc_component<T>();
         new_pool->reserve(std::distance(b, e));
         std::for_each(b, st, [&](auto &&itm){
             new_pool->emplace(std::move(itm.first), std::move(itm.second));
@@ -690,7 +643,7 @@ protected:
         Key k{component_type_id<T>, sub};
         auto iter = _storage.find(k);
         if (iter == _storage.end()) {
-            return  static_cast<PoolType<T> *>(_storage.try_emplace(k, make_unique_constexpr<PoolType<T> >()).first->second.get());
+            return  static_cast<PoolType<T> *>(_storage.try_emplace(k, alloc_component<T>()).first->second.get());
         } else {
             return static_cast<PoolType<T> *>(iter->second.get());
         }
@@ -732,6 +685,11 @@ protected:
         }
 
 
+    }
+
+    template<typename X>
+    constexpr unique_ptr<PoolType<X>, Deleter> alloc_component() {
+        return  unique_ptr<PoolType<X>, Deleter>(new  PoolType<X>);
     }
 
 };

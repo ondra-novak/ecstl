@@ -16,9 +16,8 @@ template<typename K, typename V>
 class UnorderedMapStorage: public OpenHashMap<K, V, HashOfKey<K>, std::equal_to<K> > {};
 
 template<typename T>
-class ComponentPool: public GenericComponentPool<T, IndexedFlatMapStorage> {};
-
-class Registry: public GenericRegistry<ComponentPool, UnorderedMapStorage>{};
+using ComponentPool = GenericComponentPool<T, IndexedFlatMapStorage>;
+using Registry =  GenericRegistry<ComponentPool, UnorderedMapStorage>;
 
 
 }

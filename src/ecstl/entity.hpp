@@ -3,7 +3,7 @@
 #include <atomic>
 #include <compare>
 #include <source_location>
-#include "hasher.hpp"
+#include "polyfill/hasher.hpp"
 
 
 namespace ecstl {
@@ -35,6 +35,7 @@ public:
     }
 
     static consteval Entity create_consteval(std::source_location loc = std::source_location::current()) {
+        hash<std::string_view> get_hash;
         std::uint64_t idgen = 1 + get_hash(loc.file_name()) + loc.line() + (std::uint64_t(loc.column()) << 16);
         return Entity(idgen, is_const_eval{});
     }

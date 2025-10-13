@@ -66,21 +66,37 @@ template<typename T>
 constexpr auto component_type_id = ComponentTraits<T>::id;
 
 
+
 ///Interface for component storage
 class IComponentPool {
 public:
-    constexpr virtual ~IComponentPool() = default;
-    /// Get the type of the component
-    constexpr virtual const ComponentTypeID &get_type() const = 0;
+
+    struct VTable {
+        void (*destructor)(IComponentPool *);
+        void (*erase)(IComponentPool *, Entity);
+        size_t (*size)(const IComponentPool *);
+        AnyRef (*entity)(IComponentPool *, Entity);
+        ConstAnyRef (*entity_const)(const IComponentPool *,Entity);
+    };
+
+    const VTable *_vptr = nullptr;
+    
+    
+    constexpr IComponentPool(const VTable *vptr):_vptr(vptr) {}
     /// Erase the component data for a given entity
-    constexpr virtual void erase(Entity e)  = 0;
+    constexpr void erase(Entity e)  {_vptr->erase(this,e);}
     /// Count of components
-    constexpr virtual size_t size() const = 0;
+    constexpr size_t size() const {return _vptr->size(this);}
     /// Retrieve entity as AnyRef if exists.
-    constexpr virtual AnyRef entity(Entity e) = 0;
+    constexpr AnyRef entity(Entity e) {return _vptr->entity(this,e);}
     /// Retrieve entity as ConstAnyRef if exists.
-    constexpr virtual ConstAnyRef entity(Entity e) const = 0;
+    constexpr ConstAnyRef entity(Entity e) const {return _vptr->entity_const(this,e);}
+    /// destroy this class (use deleter)
+    constexpr void destroy() {
+        _vptr->destructor(this);
+    }
 };
+
 
 
 
@@ -91,40 +107,63 @@ public:
  * standard map interface (insert, find, erase, begin, end, size)
  */
 template<typename T, template<class,class> class Storage>
-class GenericComponentPool : public Storage<Entity, T> , public IComponentPool {
+class GenericComponentPool : public IComponentPool, public Storage<Entity, T>  {
 public:
     using Super = Storage<Entity, T>;
 
+    static constexpr GenericComponentPool *super(IComponentPool *me);
+    static constexpr const GenericComponentPool *super(const IComponentPool *me);
+
+    static constexpr VTable vtable = {
+        [](IComponentPool *me){
+            GenericComponentPool *p = super(me);
+            delete p;
+        },
+        [](IComponentPool *me, Entity e){super(me)->erase(e);},
+        [](const IComponentPool *me){return super(me)->size();},
+        [](IComponentPool *me, Entity e){return super(me)->entity(e);},
+        [](const IComponentPool *me, Entity e){return super(me)->entity(e);},
+    };
+
     ///inicialize default
-    constexpr GenericComponentPool() = default;
+    constexpr GenericComponentPool() : IComponentPool(&vtable) {}
 
     ///inicialize with database instance
     template<typename DB>
     constexpr GenericComponentPool(DB &) {}   //we don't need database
 
-    virtual const ComponentTypeID &get_type() const {
+    const ComponentTypeID &get_type() const {
         return component_type_id<T>;
     }
-    virtual void erase(Entity e)  {
+    void erase(Entity e)  {
         Super::erase(e);
     }
 
-    virtual size_t size() const {
+    size_t size() const {
         return Super::size();
     }
-    virtual AnyRef entity(Entity e) {
+    AnyRef entity(Entity e) {
         auto iter = Super::find(e);
         if (iter == Super::end()) return AnyRef{};
         else return AnyRef(iter->second);
     }
-    virtual ConstAnyRef entity(Entity e) const {
+    ConstAnyRef entity(Entity e) const {
         auto iter = Super::find(e);
         if (iter == Super::end()) return ConstAnyRef{};
         else return ConstAnyRef(iter->second);
     }
 };
 
+template <typename T, template<class,class> class Storage>
+inline constexpr GenericComponentPool<T, Storage> *GenericComponentPool<T, Storage>::super(IComponentPool *me)
+{
+    {return static_cast<GenericComponentPool<T, Storage> *>(me);}
+}
 
-
+template <typename T, template<class,class> class Storage>
+inline constexpr const GenericComponentPool<T, Storage> *GenericComponentPool<T, Storage>::super(const IComponentPool *me)
+{
+    {return static_cast<const GenericComponentPool<T, Storage> *>(me);}
+}
 
 }

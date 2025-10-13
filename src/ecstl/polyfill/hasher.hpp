@@ -1,9 +1,15 @@
 #pragma once
+
 #include <string_view>
 
 namespace ecstl {
 
-    constexpr std::size_t get_hash(const std::string_view &s) {
+template<typename T>
+struct hash: public std::hash<T> {};
+
+template<>
+struct hash<std::string_view> {
+    constexpr std::size_t operator()(const std::string_view &s) const {
         if constexpr(sizeof(std::size_t) == 4) {
             std::size_t h = 2166136261u;
             for (char c : s)
@@ -17,4 +23,8 @@ namespace ecstl {
             return h;
         }
     }
+};
+
+
+
 }
