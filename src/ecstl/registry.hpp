@@ -81,14 +81,9 @@ public:
             return (key._type_id+key._variant_id).get_id();
         }
     };
-    struct Deleter {
-        constexpr void operator()(IComponentPool *p){
-            p->destroy();
-        }
-    };
 
     ///Type of component pool pointer
-    using PPool = unique_ptr<IComponentPool, Deleter>;
+    using PPool = unique_ptr<IComponentPool>;
 
     ///Create a new entity
     static constexpr Entity create_entity() {
@@ -688,8 +683,8 @@ protected:
     }
 
     template<typename X>
-    constexpr unique_ptr<PoolType<X>, Deleter> alloc_component() {
-        return  unique_ptr<PoolType<X>, Deleter>(new  PoolType<X>);
+    constexpr unique_ptr<PoolType<X> > alloc_component() {
+        return  unique_ptr<PoolType<X> >(new  PoolType<X>);
     }
 
 };
