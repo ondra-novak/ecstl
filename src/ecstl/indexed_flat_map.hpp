@@ -13,8 +13,12 @@ public:
     using VectorK = std::vector<K>;
     using VectorV = std::vector<V>;
 
-    using iterator = paired_iterator<typename VectorK::const_iterator, typename VectorV::iterator>;
-    using const_iterator = paired_iterator<typename VectorK::const_iterator, typename VectorV::const_iterator>;
+    using const_primitive_iterator_key = const K *;
+    using const_primitive_iterator_value = const V *;
+    using primitive_iterator_value = V *;
+
+    using iterator = paired_iterator<const_primitive_iterator_key, primitive_iterator_value>;
+    using const_iterator = paired_iterator<const_primitive_iterator_key, const_primitive_iterator_value>;
     using insert_result = std::pair<iterator, bool>;
     
 
@@ -102,19 +106,11 @@ protected:
     std::vector<V> _values;
 
     constexpr iterator build_iterator(std::size_t pos) {
-        auto kit = _keys.begin();
-        auto vit = _values.begin();
-        std::advance(kit, pos);
-        std::advance(vit, pos);
-        return iterator(kit, vit);
+        return iterator(_keys.data()+pos, _values.data()+pos);
     }
 
     constexpr const_iterator build_iterator(std::size_t pos) const {
-        auto kit = _keys.begin();
-        auto vit = _values.begin();
-        std::advance(kit, pos);
-        std::advance(vit, pos);
-        return const_iterator(kit, vit);
+        return const_iterator(_keys.data()+pos, _values.data()+pos);
     }
 
 };

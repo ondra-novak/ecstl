@@ -3,6 +3,7 @@
 #include "optional_ref.hpp"
 #include "utils/class_ident.hpp"
 #include <type_traits>
+#include <stdexcept>
 
 
 namespace ecstl {
@@ -40,16 +41,15 @@ public:
         return inst._type == class_hash<T>;
     }
 
-    ///Get the value of type T (throws std::bad_cast if type does not match)
+    ///Get the value of type T 
     template<typename T>
-    constexpr friend T &get(const AnyRef &inst) {
-        if (!holds_alternative<T>(inst)) throw std::bad_cast();
+    friend T &get(const AnyRef &inst) {
         return *static_cast<T *>(inst._ref);
     }
 
     ///Get OptionalRef to type T (empty if type does not match)
     template<typename T>
-    constexpr OptionalRef<T> get_if() const {
+    OptionalRef<T> get_if() const {
         if (holds_alternative<T>(*this)) return OptionalRef<T>(get<T>(*this));
         else return OptionalRef<T>();
     }
@@ -80,27 +80,26 @@ public:
     constexpr ConstAnyRef(const T &val):_ref(&val),_type(class_hash<T>) {}
 
     ///Copy and move
-    ConstAnyRef(const ConstAnyRef &other) = default;
+    constexpr ConstAnyRef(const ConstAnyRef &other) = default;
     ///Move constructor
-    ConstAnyRef(ConstAnyRef &&other) = default;
+    constexpr ConstAnyRef(ConstAnyRef &&other) = default;
     ///Copy and move assignment
-    ConstAnyRef &operator=(const ConstAnyRef &other) = default;
+    constexpr ConstAnyRef &operator=(const ConstAnyRef &other) = default;
     /// Move assignment
-    ConstAnyRef &operator=(ConstAnyRef &&other) = default;
+    constexpr ConstAnyRef &operator=(ConstAnyRef &&other) = default;
 
     ///Check whether ConstAnyRef contains a value
-    explicit operator bool () const {return _ref != nullptr;}
+    constexpr explicit operator bool () const {return _ref != nullptr;}
 
     ///Check whether ConstAnyRef holds a value of type T
     template<typename T>
-    friend bool holds_alternative(const ConstAnyRef &inst) {
+    constexpr friend bool holds_alternative(const ConstAnyRef &inst) {
         return inst._type == class_hash<T>;
     }
 
-    ///Get the value of type T (throws std::bad_cast if type does not match)
+    ///Get the value of type T 
     template<typename T>
     friend T &get(const ConstAnyRef &inst) {
-        if (!holds_alternative<T>(inst)) throw std::bad_cast();
         return *static_cast<T *>(inst._ref);
     }
 
