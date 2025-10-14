@@ -81,8 +81,8 @@ int main() {
         std::cout << e << "=" <<  a << ":" << b.foo << std::endl;
     }
 
-    std::cout << db.contains<TestComponent, ecstl::EntityName>(bbb, {example_component}) << std::endl;
-    std::cout << db.contains<TestComponent, ecstl::EntityName>(aaa, {example_component}) << std::endl;
+    std::cout << db.has<TestComponent, ecstl::EntityName>(bbb, {example_component}) << std::endl;
+    std::cout << db.has<TestComponent, ecstl::EntityName>(aaa, {example_component}) << std::endl;
 
     db.group<ecstl::EntityName, TestComponent>({{}, example_component});
 

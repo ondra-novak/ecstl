@@ -519,7 +519,7 @@ public:
      *  @return true if the entity has the component, false otherwise   
      */
     template<typename Component>
-    constexpr bool contains(Entity e, ComponentTypeID subid = {}) const {
+    constexpr bool has(Entity e, ComponentTypeID subid = {}) const {
         return get<Component>(e,subid);
     }
 
@@ -530,12 +530,12 @@ public:
      *  @return true if the entity has all specified components, false otherwise
      */
     template<typename ... Components>
-    constexpr bool contains(Entity e, std::span<const ComponentTypeID> variants) const {
+    constexpr bool has(Entity e, std::span<const ComponentTypeID> variants) const {
         static_assert(sizeof...(Components) > 0);
         if constexpr (sizeof...(Components) == 1)  {
-            return contains<Components...>(e, variants.empty()?ComponentTypeID():ComponentTypeID(variants.front()));
+            return has<Components...>(e, variants.empty()?ComponentTypeID():ComponentTypeID(variants.front()));
         } else {
-            return contains_impl<Components ...>(e, variants);
+            return has_impl<Components ...>(e, variants);
         }
     }
 
@@ -546,8 +546,8 @@ public:
      *  @return true if the entity has all specified components, false otherwise
      */
     template<typename ... Components>
-    constexpr bool contains(Entity e, std::initializer_list<ComponentTypeID> variants) const {
-        return contains<Components ...>(e, std::span<const ComponentTypeID>(variants));
+    constexpr bool has(Entity e, std::initializer_list<ComponentTypeID> variants) const {
+        return has<Components ...>(e, std::span<const ComponentTypeID>(variants));
     }
 
 
@@ -632,19 +632,18 @@ public:
      * over this combination, sequential traversal is used, resulting in more efficient iteration. For this
      * operation to be sufficiently efficient, all pools in the given combination should be optimized.
      */
-    template<typename T, typename ... Uvs>
-    constexpr bool optimize_pool(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
+    template<typename T, typename U, typename ... Vs>
+    constexpr bool group_entities(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
         return group_entities<T>(variant_t, [&](const Entity &e, const auto &){
-            return contains<Uvs...>(e,variant_uvs);
+            return has<U,Vs...>(e,variant_uvs);
         });
     }
 
 
 
-    template<typename T, typename ... Uvs>
-    constexpr bool optimize_pool(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
-        static_assert(sizeof...(Uvs) > 0);
-        return optimize_pool<T, Uvs...>(variant_t, std::span<const ComponentTypeID>(variant_uvs));
+    template<typename T, typename U, typename ... Vs>
+    constexpr bool group_entities(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
+        return optimize_pool<T, U, Vs...>(variant_t, std::span<const ComponentTypeID>(variant_uvs));
     }
 
     template<typename ... Components>
@@ -707,16 +706,16 @@ protected:
     }
 
     template<typename T, typename ... Components>
-    constexpr bool contains_impl(Entity e, std::span<const ComponentTypeID> variants) const {
+    constexpr bool has_impl(Entity e, std::span<const ComponentTypeID> variants) const {
         if constexpr(sizeof...(Components) == 0) return true;
         else {
             if (variants.empty()) {
-                if (!contains<T>(e)) return false;            
+                if (!has<T>(e)) return false;            
             } else {
-                if (!contains<T>(e, variants.front())) return false;            
+                if (!has<T>(e, variants.front())) return false;            
                 variants = variants.subspan<1>();
             }
-            return contains_impl<Components...>(e, variants);
+            return has_impl<Components...>(e, variants);
         }
     }
 
@@ -737,7 +736,7 @@ protected:
         } else {            
             auto sub = std::span<const ComponentTypeID>(var_tmp).subspan<1>();
             auto front = var_tmp.front();
-            if (!optimize_pool<T, Components...>(front, sub)) return false;            
+            if (!group_entities<T, Components...>(front, sub)) return false;            
             auto iter = std::copy(sub.begin(), sub.end(), var_tmp.begin());
             *iter = front;
             return optimize_rotate_2<N+1, cnt, Components..., T>(var_tmp);

@@ -110,7 +110,7 @@ Assume r =  Registry();
 * **r.all_of&lt;ComponentType&gt;()** - Get a range of all components of a specific type. Both const and non-const versions are available.
 * **r.all_of&lt;ComponentType&gt;(ComponentTypeID variant)** - Get a range of all components of a specific type and variant. Both const and non-const versions are available.
 * **r.view<ComponentTypes...>(std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Create a view for iterating over entities with specific component types and optional variants.
-* **r.contains<ComponentTypes...>(Entity e, std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Check if an entity contains all specified component types and optional variants.
+* **r.has<ComponentTypes...>(Entity e, std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Check if an entity contains all specified component types and optional variants.
 * **r.group<ComponentTypes...>(std::initializer_list&lt;CompoinentTypeID&gt; variants = {})** - Create a group for iterating over entities with specific component types and optional variants. Groups are optimized for frequent access.
 * **r.for_each_component(Entity e, Callback &)** - Iterate over all components of an entity, invoking the provided callback for each component.
 

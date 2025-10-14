@@ -401,11 +401,30 @@ static int make_group_impl(Registry *reg, const ecs_component_t *components, std
     return r?1:0;
 }
 
-
+int ecs_has(const ecs_registry_t *reg, ecs_entity_t entity, int component_count, const ecs_component_t *components) {
+    auto r = cast(reg);
+    Entity e(entity);
+    for (int i = 0; i < component_count; ++i) {
+        if (!r->has<BinaryComponentView>(e, {ComponentTypeID(components[i])})) return 0;
+    }
+    return 1;
+}
 
 
 int ecs_group(ecs_registry_t *reg, int component_count, const ecs_component_t *components)
 {
     if (component_count < 2) return 0;
+    auto r = cast(reg);
+    for (int i = 0; i < component_count; ++i) {
+        r->group_entities<BinaryComponentView>(ComponentTypeID(components[i]),[&](const Entity &e, const auto &){
+            for (int j = 0; j < component_count; ++j) {
+                if (j!= i && !r->has<BinaryComponentView>(e,{ComponentTypeID(components[i])})) return false;
+            }
+            return true;
+        });
+    }
+
+
+
     return 0;
 }

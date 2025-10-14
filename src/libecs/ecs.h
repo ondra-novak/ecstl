@@ -182,6 +182,18 @@ int ecs_view_iterate_mut(ecs_registry_t * reg, int component_count, const ecs_co
  */
 int ecs_group(ecs_registry_t * reg, int component_count, const ecs_component_t *components);
 
+
+///Finds, whether entity has given components
+/**
+ * @param reg registry
+ * @param entity entity to explore
+ * @param component_count count of components to check
+ * @param components array of components
+ * @retval 1 entity has all components
+ * @retval 0 entity doesn't have all components
+ */
+int ecs_has(const ecs_registry_t *reg, ecs_entity_t entity, int component_count, const ecs_component_t *components);
+
 /// Lock the registry for writing (exclusive access)
 void lock_ecs_registry(ecs_registry_t * reg);
 /// Unlock the registry for writing
