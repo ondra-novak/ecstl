@@ -53,14 +53,15 @@ public:
         return e._id;
     }
 
+    std::size_t id() const {return _id;}
 protected:
-    std::uint64_t _id;
-    static std::atomic<std::uint64_t> _idgen;
+    std::size_t _id;
+    static std::atomic<std::size_t> _idgen;
 
 };
 
 
-inline std::atomic<std::uint64_t> Entity::_idgen;
+inline std::atomic<std::size_t> Entity::_idgen;
 
 
 }

@@ -240,17 +240,6 @@ public:
         iter->second->erase(e);
     }
 
-    ///Get a const reference to a component of type T for an entity (if it exists)
-    /**
-     * @tparam T Type of the component to be retrieved
-     * @param e Entity whose component is to be retrieved
-     * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
-     * This overload uses default component variant ID (0).
-     */
-    template<typename T>
-    constexpr const OptionalRef<const T> get(Entity e) const {
-        return get<T>(e, {});
-    }
 
     ///Get a const reference to a component of type T with specific component variant ID for an entity (if it exists)
     /**
@@ -260,25 +249,28 @@ public:
      * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
      */
     template<typename T>
-    constexpr const OptionalRef<const T> get(Entity e, ComponentTypeID variant_id) const {
+    constexpr auto get(Entity e, ComponentTypeID variant_id) const {
         auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return {};
+        using RetT = OptionalRef<std::remove_reference_t<decltype(std::declval<const PoolType<T> *>()->begin()->second)> >;
+        if (iter == _storage.end()) return RetT(std::nullopt);
         auto pp = static_cast<const PoolType<T> *>(iter->second.get());
         auto iter2 = pp->find(e);
-        if (iter2 == pp->end()) return {};
-        return {iter2->second};
+        if (iter2 == pp->end()) return RetT(std::nullopt);
+        return RetT{iter2->second};
     }
 
-    ///Get a reference to a component of type T for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
+        ///Get a const reference to a component of type T for an entity (if it exists)
+    /**
+     * @tparam T Type of the component to be retrieved
      * @param e Entity whose component is to be retrieved
      * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
      * This overload uses default component variant ID (0).
      */
     template<typename T>
-    constexpr OptionalRef<T> get(Entity e) {
-        return get(e, {});
+    constexpr auto get(Entity e) const {
+        return get<T>(e, {});
     }
+
 
     ///Get a reference to a component of type T with specific component variant ID for an entity (if it exists)
     /** @tparam T Type of the component to be retrieved
@@ -287,14 +279,26 @@ public:
      *  @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
      */
     template<typename T>
-    constexpr OptionalRef<T> get(Entity e, ComponentTypeID variant_id) {
+    constexpr auto get(Entity e, ComponentTypeID variant_id) {
         auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return {};
+        using RetT = OptionalRef<std::remove_reference_t<decltype(std::declval<PoolType<T> *>()->begin()->second)> >;
+        if (iter == _storage.end()) return RetT(std::nullopt);;
         auto pp = static_cast<PoolType<T> *>(iter->second.get());
         auto iter2 = pp->find(e);
-        if (iter2 == pp->end()) return {};
-        return {iter2->second};
+        if (iter2 == pp->end()) return RetT(std::nullopt);;
+        return RetT{iter2->second};
 
+    }
+
+        ///Get a reference to a component of type T for an entity (if it exists)
+    /** @tparam T Type of the component to be retrieved
+     * @param e Entity whose component is to be retrieved
+     * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
+     * This overload uses default component variant ID (0).
+     */
+    template<typename T>
+    constexpr auto get(Entity e) {
+        return get(e, {});
     }
 
     ///Find component of type T with specific component variant ID for an entity (if it exists)
@@ -497,6 +501,15 @@ public:
     constexpr View<GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) {
         return View<GenericRegistry *, Components...>(this,ids);
     }
+    template<typename ... Components>
+    constexpr View<const GenericRegistry *, Components...> view(std::initializer_list<ComponentTypeID> ids = {}) const {
+        return View<const GenericRegistry *, Components...>(this,ids);
+    }
+
+    template<typename ... Components>
+    constexpr View<const GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) const {
+        return View<const GenericRegistry *, Components...>(this,ids);
+    }
 
 
     ///Check whether an entity has a component of type T with specific component variant ID
@@ -518,7 +531,12 @@ public:
      */
     template<typename ... Components>
     constexpr bool contains(Entity e, std::span<const ComponentTypeID> variants) const {
-        return contains_impl<Components ...>(e, variants);
+        static_assert(sizeof...(Components) > 0);
+        if constexpr (sizeof...(Components) == 1)  {
+            return contains<Components...>(e, variants.empty()?ComponentTypeID():ComponentTypeID(variants.front()));
+        } else {
+            return contains_impl<Components ...>(e, variants);
+        }
     }
 
     ///Check whether an entity has all specified components (with optional component variant IDs)
@@ -529,7 +547,7 @@ public:
      */
     template<typename ... Components>
     constexpr bool contains(Entity e, std::initializer_list<ComponentTypeID> variants) const {
-        return contains_impl<Components ...>(e, variants);
+        return contains<Components ...>(e, std::span<const ComponentTypeID>(variants));
     }
 
 
@@ -603,16 +621,19 @@ public:
 
     template<typename T, typename ... Uvs>
     constexpr bool optimize_pool(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
+        static_assert(sizeof...(Uvs) > 0);
         return optimize_pool<T, Uvs...>(variant_t, std::span<const ComponentTypeID>(variant_uvs));
     }
 
     template<typename ... Components>
     constexpr bool group(std::span<const ComponentTypeID> variants = {}) {
+        static_assert(sizeof...(Components) > 1);
         return optimize_rotate<Components...>(variants);
     }
 
     template<typename ... Components>
     constexpr bool group(std::initializer_list<ComponentTypeID> variants) {
+        static_assert(sizeof...(Components) > 1);
         return optimize_rotate<Components...>(variants);
     }
 
@@ -628,6 +649,24 @@ public:
             if (static_cast<std::string_view>(en) == name) return e;
         }
         return {};
+    }
+
+    template<typename Component>
+    PoolType<Component> *get_component_pool(ComponentTypeID variant = {}, bool create = false) {
+        if (create) {
+            return create_component_if_needed<Component>(variant);
+        } else {
+            auto r = _storage.find(Key{component_type_id<Component>, variant});
+            if (r == _storage.end()) return nullptr;
+            return static_cast<PoolType<Component> *>(r->second.get());
+        }
+    }
+
+    template<typename Component>
+    const PoolType<Component> *get_component_pool(ComponentTypeID variant = {}) const {
+        auto r = _storage.find(Key{component_type_id<Component>, variant});
+        if (r == _storage.end()) return nullptr;
+        return static_cast<PoolType<Component> *>(r->second.get());
     }
 
 protected:
@@ -647,18 +686,21 @@ protected:
 
     template<typename T, typename ... Components>
     constexpr bool contains_impl(Entity e, std::span<const ComponentTypeID> variants) const {
-        if (variants.empty()) {
-            if (!contains<T>(e)) return false;            
-        } else {
-            if (!contains<T>(e, variants.front())) return false;            
-            variants = variants.subspan<1>();
-        }
         if constexpr(sizeof...(Components) == 0) return true;
-        else return contains_impl<Components...>(e, variants);
+        else {
+            if (variants.empty()) {
+                if (!contains<T>(e)) return false;            
+            } else {
+                if (!contains<T>(e, variants.front())) return false;            
+                variants = variants.subspan<1>();
+            }
+            return contains_impl<Components...>(e, variants);
+        }
     }
 
     template<typename T, typename ... Components>
     constexpr bool optimize_rotate(std::span<const ComponentTypeID> variants)  {
+        static_assert(sizeof...(Components) > 0);
         constexpr auto cnt = sizeof...(Components)+1;
         std::array<ComponentTypeID, cnt> tmp;        
         std::copy(variants.begin(), variants.end(), tmp.begin());
