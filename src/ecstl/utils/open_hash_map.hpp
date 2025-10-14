@@ -14,10 +14,15 @@ namespace ecstl {
             tombstone
         };
 
+        struct KeyValue {
+            const K first;
+            V second;
+        };
+
         struct Item {
             State state;
             union {
-                std::pair<const K, V> key_value;
+                KeyValue key_value;
             };
             constexpr Item():state(State::empty) {}
             constexpr  ~Item() {
@@ -57,7 +62,7 @@ namespace ecstl {
         public:
             using iterator_concept  = std::bidirectional_iterator_tag;
             using iterator_category = std::bidirectional_iterator_tag;
-            using value_type        = std::conditional_t<is_const,const std::pair<const K,V>, std::pair<const K,V> >;
+            using value_type        = std::conditional_t<is_const,const KeyValue, KeyValue >;
             using difference_type   = std::ptrdiff_t;
             using pointer           = value_type *;
             using reference         = value_type &;
