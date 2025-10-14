@@ -13,4 +13,5 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+add_subdirectory(src/libecs)
 add_subdirectory(src/tests)
