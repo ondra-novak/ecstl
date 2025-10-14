@@ -562,31 +562,31 @@ public:
         return false;
     }
 
-    ///Optimize the storage layout of a component pool by separating entities with specific components into a new pool
+ 
+    ///Group entities in a component pool
     /**
-     * @tparam T Type of the component whose pool is to be optimized
-     * @tparam Uvs Types of components that should be present in the new pool
-     * @param variant_t Component variant ID of the component T to be optimized (default is 0)
-     * @param variant_uvs List of component variant IDs for components Uvs (default is empty)
-     * @return true if the pool was optimized, false if no entities matched the criteria
-     *
-     * Chains all components of entities in pool T together for all entities that exist in the other pools.
-     * The components are also sorted by entity to ensure the order is always unambiguous. When iterating
-     * over this combination, sequential traversal is used, resulting in more efficient iteration. For this
-     * operation to be sufficiently efficient, all pools in the given combination should be optimized.
+     * marked entities are moved to be closer to each other.
+     * Use predicate to mark these entities. This can help to
+     * iterate over the pool where entities should match the conditions
+     * 
+     * @tparam Component type component to optimize
+     * @tparam Fn predicate function. It receives entity and component,and 
+     * it must return true to bring entity to close others marked
+     * @param variant component variant
+     * @param predicate instance of preficate function 
      */
-    template<typename T, typename ... Uvs>
-    constexpr bool optimize_pool(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
-        auto mitr = _storage.find(Key{component_type_id<T>, variant_t});
+    template<typename Component, std::invocable<Entity, Component>  Fn>
+    constexpr bool group_entities(ComponentTypeID variant, Fn &&predicate) {
+        auto mitr = _storage.find(Key{component_type_id<Component>, variant});
         if (mitr == _storage.end() ) return false;
         auto c = mitr->second.get();
-        PoolType<T> *ct = static_cast<PoolType<T> *>(c);
+        PoolType<Component> *ct = static_cast<PoolType<Component> *>(c);
 
         auto b = ct->begin();
         auto e = ct->end();
 
         auto st = std::find_if(b,e,[&](const auto &itm){
-            return contains<Uvs...>(itm.first, variant_uvs);
+            return predicate(itm.first, itm.second);
         });
 
         if (st == e) return false;
@@ -594,13 +594,13 @@ public:
         std::vector<Entity> sortMap;
         sortMap.reserve(std::distance(st, e));
         std::for_each(st,e, [&](const auto &itm){
-            if (contains<Uvs...>(itm.first, variant_uvs)) {
+            if (predicate(itm.first, itm.second)) {
                 sortMap.push_back(itm.first);
             }
         });
         std::sort(sortMap.begin(), sortMap.end());
 
-        auto new_pool = alloc_component<T>();
+        auto new_pool = alloc_component<Component>();
         new_pool->reserve(std::distance(b, e));
         std::for_each(b, st, [&](auto &&itm){
             new_pool->emplace(std::move(itm.first), std::move(itm.second));
@@ -618,6 +618,28 @@ public:
         mitr->second = std::move(new_pool);
         return true;
     }   
+
+    ///Optimize the storage layout of a component pool by separating entities with specific components into a new pool
+    /**
+     * @tparam T Type of the component whose pool is to be optimized
+     * @tparam Uvs Types of components that should be present in the new pool
+     * @param variant_t Component variant ID of the component T to be optimized (default is 0)
+     * @param variant_uvs List of component variant IDs for components Uvs (default is empty)
+     * @return true if the pool was optimized, false if no entities matched the criteria
+     *
+     * Chains all components of entities in pool T together for all entities that exist in the other pools.
+     * The components are also sorted by entity to ensure the order is always unambiguous. When iterating
+     * over this combination, sequential traversal is used, resulting in more efficient iteration. For this
+     * operation to be sufficiently efficient, all pools in the given combination should be optimized.
+     */
+    template<typename T, typename ... Uvs>
+    constexpr bool optimize_pool(ComponentTypeID variant_t  = {}, std::span<const ComponentTypeID> variant_uvs = {}) {
+        return group_entities<T>(variant_t, [&](const Entity &e, const auto &){
+            return contains<Uvs...>(e,variant_uvs);
+        });
+    }
+
+
 
     template<typename T, typename ... Uvs>
     constexpr bool optimize_pool(ComponentTypeID variant_t, std::initializer_list<ComponentTypeID> variant_uvs ) {
