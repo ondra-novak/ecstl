@@ -120,5 +120,20 @@ Assume r =  Registry();
 * **r.set_entity_name(Entity e, std::string_view name)** - Set the name
 * **r.find_entity_by_name(std::string_view name)** - Find an entity by its name. Returns optional<Entity>.
 
+### Support for trivial components and destructive move
+
+Components can be defined as trivial structs and a `drop` method can be implemented, which is called when the component is destroyed.
+This reduces the need to declare a move constructor and destructor, allowing the struct to remain trivial even if it contains pointers that need to be released at the end of its lifetime. The resource release can be handled directly in the `drop()` method.
+
+```cpp
+
+struct ComponentWithDrop {
+    char *data = nullptr; 
+    int a;
+    float b;
+    void drop() {delete data;}  //- called when component is removed, replaced or when registry is destroyed
+}
+```
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details

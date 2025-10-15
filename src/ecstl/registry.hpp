@@ -137,7 +137,7 @@ public:
      */
     template<typename T>
     constexpr T & set(Entity e, T data) {
-        return set<T>(e, {}, std::move(data));
+        return emplace<T, ComponentTypeID, T>(e, ComponentTypeID(), std::move(data));
     }
 
     ///Add or set a component for an entity with a specific component variant ID
@@ -150,25 +150,8 @@ public:
      * @return Reference to the component data stored in the registry
      */
     template<typename T>
-    constexpr T & set(Entity e, ComponentTypeID variant_id, const T &data) {
-        return set<T>(e, variant_id, T(data));
-    }
-
-    ///Add or set a component for an entity with a specific component variant ID (rvalue overload)
-    /**
-     * If component doesn't exist, it is created. If it exists, it is updated.
-     * @tparam T Type of the component to be removed
-     * @param e Entity to which the component is to be added or updated
-     * @param variant_id component variant ID to differentiate multiple components of the same type
-     * @param data Data of the component to be set (moved)
-     * @return Reference to the component data stored in the registry
-     */
-    template<typename T>
-    constexpr T & set(Entity e, ComponentTypeID variant_id, T &&data) {
-        PoolType<T> *p = create_component_if_needed<T>(variant_id);
-        auto r = p->try_emplace(e, std::move(data));
-        if (!r.second) r.first->second = std::move(data);
-        return r.first->second;
+    constexpr T & set(Entity e, ComponentTypeID variant_id, T data) {
+        return emplace<T, ComponentTypeID &, T>(e, variant_id, std::move(data));
     }
 
     ///Add a component for an entity
@@ -189,6 +172,9 @@ public:
             PoolType<T> *p = create_component_if_needed<T>(variant_id);
             auto r = p->try_emplace(e, std::forward<Args>(args)...);
             if (!r.second) {
+                if constexpr(is_droppable<T>) {
+                    drop(r.first->second);
+                }
                 std::destroy_at(std::addressof(r.first->second));
                 std::construct_at(std::addressof(r.first->second), std::forward<Args>(args)...);
             }

@@ -76,8 +76,7 @@ int main() {
         std::cout << c.first << " = " << c.second << std::endl;
     }
 
-    for (const auto &q: db.view<ecstl::EntityName, TestComponent>({ecstl::ComponentTypeID{}, example_component})  ) {
-        const auto &[e,a,b] = q;
+    for (auto [e,a,b]: db.view<ecstl::EntityName, TestComponent>({ecstl::ComponentTypeID{}, example_component})  ) {
         std::cout << e << "=" <<  a << ":" << b.foo << std::endl;
     }
 
