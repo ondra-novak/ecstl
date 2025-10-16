@@ -171,7 +171,7 @@ namespace ecstl {
     constexpr void clear() {
         if (_deleter) {
             auto sz = _values.size();
-            for (std::size_t i = 0; i < sz; sz+=_component_size) {
+            for (std::size_t i = 0; i < sz; i+=_component_size) {
                 _deleter(_values.data()+i, _component_size);
             }
         }
@@ -270,7 +270,7 @@ void ecs_remove_all(ecs_registry_t * reg, ecs_component_t component)
     cast(reg)->remove_all_of<BinaryComponentView>(ComponentTypeID(component));
 }
 
-int ecs_set(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size)
+int ecs_store(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size)
 {
     auto r = cast(reg);
     auto pool = r->get_component_pool<BinaryComponentView>(ComponentTypeID(component), true);
@@ -285,7 +285,7 @@ int ecs_set(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component
     return 0;
 }
 
-const void *ecs_get(const ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component)
+const void *ecs_retrieve(const ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component)
 {
     auto r = cast(reg)->get<BinaryComponentView>(Entity(entity),ComponentTypeID(component));
     if (r.has_value()) {
@@ -296,7 +296,7 @@ const void *ecs_get(const ecs_registry_t * reg, ecs_entity_t entity, ecs_compone
     }
 }
 
-const void *ecs_get_mut(ecs_registry_t *reg, ecs_entity_t entity, ecs_component_t component)
+const void *ecs_retrieve_mut(ecs_registry_t *reg, ecs_entity_t entity, ecs_component_t component)
 {
     auto r = cast(reg)->get<BinaryComponentView>(Entity(entity),ComponentTypeID(component));
     if (r.has_value()) {

@@ -20,7 +20,7 @@ typedef void (*ecs_component_deleter_t)(void *data, size_t sz);
 /** 
  * @return newly created registry, NULL on error
  */
-ecs_registry_t * ecs_create_registry();
+ecs_registry_t * ecs_create_registry(void);
 /// Destroy registry
 /**
  * @param registry registry to destroy
@@ -99,25 +99,31 @@ void ecs_remove_all(ecs_registry_t * reg, ecs_component_t component);
  * If the entity already has component data of the given type, it is replaced (the deleter is called for the old data).
  * In case of size mistmatch, the function fails and returns -1
  */
-int ecs_set(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size);
-/// Get component data for an entity (const)
+int ecs_store(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size);
+/// Retrieve component data for an entity (const)
 /**
  * @param reg registry where the entity is stored
  * @param entity entity for which to get the component data
  * @param component component type
  * @return pointer to the component data, or NULL if the entity does not have component of the given type
- * @note the returned pointer is valid as long as the component data is not modified or removed
+ * @note the returned pointer is valid as long there is no change in partical component pool (ecs_component_t),
+ * event for different entity. It only includes adding or removing entitites from the pool,
+ * not modification of component data. In MT environment, you need to hold lock while
+ * your code working with the content returned by the pointer
  */
-const void *ecs_get(const ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
-/// Get component data for an entity (mutable)
+const void *ecs_retrieve(const ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+/// Retrieve component data for an entity (mutable)
 /**
  * @param reg registry where the entity is stored
  * @param entity entity for which to get the component data
  * @param component component type
  * @return pointer to the component data, or NULL if the entity does not have component of  the given type
- * @note the returned pointer is valid as long as the component data is not removed. If the component data is modified, the pointer may become invalid (e.g. if the component storage needs to reallocate memory)
+ * @note the returned pointer is valid as long there is no change in partical component pool (ecs_component_t),
+ * event for different entity. It only includes adding or removing entitites from the pool,
+ * not modification of component data. In MT environment, you need to hold lock while
+ * your code working with the content returned by the pointer
  */
-const void *ecs_get_mut(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+const void *ecs_retrieve_mut(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
 /// Remove component data for an entity
 /** 
  * @param reg registry where the entity is stored
@@ -197,6 +203,9 @@ int ecs_has(const ecs_registry_t *reg, ecs_entity_t entity, int component_count,
 /// Lock the registry for writing (exclusive access)
 void lock_ecs_registry(ecs_registry_t * reg);
 /// Unlock the registry for writing
+/** You should hold lock while your code is working
+ * with returned pointers (i.e. component data).
+  */
 void unlock_ecs_registry(ecs_registry_t * reg);
 /// Lock the registry for reading (shared access)
 void lock_ecs_registry_shared(ecs_registry_t * reg);
