@@ -87,9 +87,16 @@ constexpr int basic_view_test() {
     };
 
     auto res = std::begin(results);
-    for (const auto &[_, n,t]:rg.view<ecstl::EntityName, TestComponent>()) {
+    for (auto [_, n,t]:rg.view<ecstl::EntityName, TestComponent>()) {
         if (n != res->first) return 1;
         if (t.foo != res->second) return 2;
+        ++res;
+    }
+
+    res = std::begin(results);
+    for (auto [_, n,t]:const_cast<const Registry &>(rg).view<ecstl::EntityName, TestComponent>()) {
+        if (n != res->first) return 3;
+        if (t.foo != res->second) return 4;
         ++res;
     }
     return 0;
@@ -122,4 +129,34 @@ constexpr int optimize_pool_test() {
 
 }
 
-//static_assert(optimize_pool_test() == 0);
+static_assert(optimize_pool_test() == 0);
+
+
+struct DropTestComponent {
+    int *ptr = nullptr;
+    constexpr void drop() {
+        delete ptr;
+    }
+};
+
+static_assert(is_droppable_by_method<DropTestComponent>);
+static_assert(is_droppable<DropTestComponent>);
+
+constexpr bool drop_test() {
+    Registry r;
+    auto e = Entity::create_consteval();
+    r.set<DropTestComponent>(e, {new int(42)});
+    r.set<DropTestComponent>(e, {new int(52)});
+    r.remove<DropTestComponent>(e);
+    r.set<DropTestComponent>(e, {new int(78)});
+    //release in destructor
+    //test fails if extra memory leaks
+    return true;
+}
+
+
+
+static_assert(drop_test());
+
+
+

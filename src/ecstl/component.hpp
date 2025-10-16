@@ -45,6 +45,26 @@ concept has_component_type_as_const = requires {
 };
 
 template<typename T>
+concept is_droppable_by_method = requires(T &obj) {
+    {obj.drop()};
+};
+
+
+
+template<is_droppable_by_method T>
+constexpr void drop(T &v) {
+    v.drop();
+}
+
+
+template<typename T>
+concept is_droppable = requires(T &t) {
+    {drop(t)};
+};
+
+
+
+template<typename T>
 constexpr bool always_false = false;
 
 ///Traits to get component type ID from type T
@@ -96,7 +116,13 @@ public:
     ///inicialize default
     constexpr GenericComponentPool()=default;
 
-    constexpr ~GenericComponentPool()=default;
+    constexpr ~GenericComponentPool() {
+        if constexpr(is_droppable<T>) {
+            for (auto [k,v]: *this) {
+                drop(v);
+            }
+        }
+    }
 
     ///inicialize with database instance
     template<typename DB>
@@ -105,7 +131,12 @@ public:
     virtual const ComponentTypeID &get_type() const {
         return component_type_id<T>;
     }
-    virtual void erase(Entity e)  {
+    virtual constexpr void erase(Entity e)  {
+        if constexpr(is_droppable<T>) {
+            auto iter = Super::find(e);
+            if (iter == Super::end()) return;
+            drop(iter->second);
+        } 
         Super::erase(e);
     }
 
