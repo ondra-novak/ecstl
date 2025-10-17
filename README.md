@@ -125,13 +125,15 @@ Assume r =  Registry();
 Components can be defined as trivial structs and a `drop` method can be implemented, which is called when the component is destroyed.
 This reduces the need to declare a move constructor and destructor, allowing the struct to remain trivial even if it contains pointers that need to be released at the end of its lifetime. The resource release can be handled directly in the `drop()` method.
 
+Note: this feature is optional. You can still define custom destructors and move constructors if needed and they will work as expected.
+
 ```cpp
 
 struct ComponentWithDrop {
     char *data = nullptr; 
     int a;
     float b;
-    void drop() {delete data;}  //- called when component is removed, replaced or when registry is destroyed
+    void drop() {delete [] data;}  //- called when component is removed, replaced or when registry is destroyed
 }
 ```
 
