@@ -265,7 +265,7 @@ ecs_component_t ecs_register_component(ecs_registry_t * reg, const char *name, e
     return type.get_id();
 }
 
-void ecs_remove_all(ecs_registry_t * reg, ecs_component_t component)
+void ecs_unregister_component(ecs_registry_t * reg, ecs_component_t component)
 {
     cast(reg)->remove_all_of<BinaryComponentView>(ComponentTypeID(component));
 }
@@ -296,7 +296,7 @@ const void *ecs_retrieve(const ecs_registry_t * reg, ecs_entity_t entity, ecs_co
     }
 }
 
-const void *ecs_retrieve_mut(ecs_registry_t *reg, ecs_entity_t entity, ecs_component_t component)
+void *ecs_retrieve_mut(ecs_registry_t *reg, ecs_entity_t entity, ecs_component_t component)
 {
     auto r = cast(reg)->get<BinaryComponentView>(Entity(entity),ComponentTypeID(component));
     if (r.has_value()) {

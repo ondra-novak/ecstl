@@ -77,13 +77,15 @@ ecs_entity_t ecs_find_entity_by_name(ecs_registry_t * reg, const char *name);
  * If the component name was already registered, the existing component id is returned (the deleter is not changed in this case).
  */
 ecs_component_t ecs_register_component(ecs_registry_t * reg, const char *name, ecs_component_deleter_t deleter);
-/// Remove all components of given type
+/// Unregister component
 /**
  * @param reg registry where to remove the components
  * @param component component type to remove    
- * @note deleters registered for the component are called appropriately.
+ * @note Deletes all data associated with the component from the registry. It also 
+ * calls the deleter registered for the component for each data being deleted.
+ * Removes all metadata associated with the component from the registry (including the deleter).
  */ 
-void ecs_remove_all(ecs_registry_t * reg, ecs_component_t component);
+void ecs_unregister_component(ecs_registry_t * reg, ecs_component_t component);
 
 /// Set component data for an entity
 /**
@@ -123,7 +125,7 @@ const void *ecs_retrieve(const ecs_registry_t * reg, ecs_entity_t entity, ecs_co
  * not modification of component data. In MT environment, you need to hold lock while
  * your code working with the content returned by the pointer
  */
-const void *ecs_retrieve_mut(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+void *ecs_retrieve_mut(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
 /// Remove component data for an entity
 /** 
  * @param reg registry where the entity is stored

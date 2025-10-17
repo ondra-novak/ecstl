@@ -4,12 +4,69 @@
 namespace ecstl {
 
 
+    template<typename T>
+    class FixedPrimitiveArray {
+    public:
+
+        constexpr FixedPrimitiveArray() = default;
+        constexpr FixedPrimitiveArray(std::size_t cnt) {
+            _ptr = new T[cnt]();
+            _size = cnt;
+        }
+        constexpr ~FixedPrimitiveArray() {
+            delete [] _ptr;
+        }
+
+        constexpr FixedPrimitiveArray(const FixedPrimitiveArray &other)
+            :FixedPrimitiveArray(other._size())
+        {
+            std::copy(other.begin(), other.end(), begin());
+        }
+        constexpr FixedPrimitiveArray &operator=(const FixedPrimitiveArray &other) {
+            if (this != &other) {
+                std::destroy_at(this);
+                std::construct_at(this, other);
+            }
+            return *this;
+        }
+        constexpr FixedPrimitiveArray(FixedPrimitiveArray &&other)
+            :_ptr(other._ptr), _size(other._size) {
+                other._ptr = nullptr; other._size = 0;
+            }
+
+        constexpr FixedPrimitiveArray &operator=(FixedPrimitiveArray &&other) {
+            if (this != &other) {
+                std::destroy_at(this);
+                std::construct_at(this, std::move(other));
+            }
+            return *this;
+        }
+        
+
+        constexpr T *begin() {return _ptr;}
+        constexpr T *end() {return _ptr+_size;}
+        constexpr const T *begin() const {return _ptr;}
+        constexpr const T *end() const {return _ptr+_size;}
+        constexpr const T *cbegin() const {return _ptr;}
+        constexpr const T *cend() const {return _ptr+_size;}
+
+        constexpr T &operator[](std::size_t idx) {return _ptr[idx];}
+        constexpr const T &operator[](std::size_t idx) const {return _ptr[idx];}
+
+        constexpr std::size_t size() const {return _size;}
+
+    protected:
+        T *_ptr = nullptr;
+        std::size_t _size = 0;
+    };
+
+
     template<typename K, typename V, typename Hash = std::hash<K>, typename Equal = std::equal_to<K> >
     class OpenHashMap {
     
         
         enum class State {
-            empty,
+            empty = 0, 
             occupied,
             tombstone
         };
@@ -20,41 +77,66 @@ namespace ecstl {
         };
 
         struct Item {
-            State state;
             union {
                 KeyValue key_value;
             };
-            constexpr Item():state(State::empty) {}
-            constexpr  ~Item() {
-                clear();
-            }
-            constexpr void clear() {
-                if (state == State::occupied) {
-                    std::destroy_at(&key_value);
-                    state = State::empty;
-                }
-            }
-            constexpr Item(Item &&other) noexcept : state(other.state) {
-                if (state == State::occupied) {
-                    std::construct_at(&key_value, std::move(other.key_value));
-                    other.state = State::empty;
-                }
-            }
-            constexpr Item & operator=(Item &&other) noexcept {
-                clear();
-                state = other.state;
-                if (state == State::occupied) {
-                    std::construct_at(&key_value, std::move(other.key_value));
-                    other.state = State::empty;
-                }
-                return *this;
-            }
+            constexpr Item() {}
+            constexpr ~Item() {}
         };
 
-        using Vec = std::vector<Item>;
-
     public:
+
+        constexpr OpenHashMap() = default;
+        constexpr OpenHashMap(std::size_t size, Hash hasher = {}, Equal equal = {})
+            :_hasher(std::move(hasher))
+            ,_eq(std::move(equal))
+            ,_items(size)
+            ,_state(size+1)
+            ,_size(0)
+            {
+                _state[size] = State::occupied; //after last item there is occupied item serves as stop
+            }
         
+            
+        constexpr ~OpenHashMap() {
+            clear();
+        }
+        constexpr OpenHashMap(const OpenHashMap &other):OpenHashMap(other.size(), other._hasher, other._eq) {
+            for (const auto &[k, v]: other) {
+                emplace(k, v);
+            }
+        }
+        constexpr OpenHashMap &operator=(const OpenHashMap &other) {
+            if (this != &other) {
+                clear();
+                _hasher = other._hasher;
+                _eq = other._eq;                
+                for (const auto &[k, v]: other) {
+                    emplace(k, v);
+                }
+            }
+            return *this;
+        }
+        constexpr OpenHashMap(OpenHashMap &&other)
+            :_hasher(std::move(other._hasher))
+            ,_eq(std::move(other._eq))
+            ,_items(std::move(other._items))
+            ,_state(std::move(other._state))
+            ,_size(std::move(other._size)) {
+                other._size = 0;
+            }
+        constexpr OpenHashMap &operator=(OpenHashMap &&other) {
+            if (this != &other) {
+                clear();
+                _hasher = std::move(other._hasher);
+                _eq = std::move(other._eq);
+                _items = std::move(other._items);
+                _state = std::move(other._state);
+                _size = std::move(other._size);
+                other._size = 0;
+            }
+            return *this;
+        }
 
 
         template<bool is_const>
@@ -83,7 +165,7 @@ namespace ecstl {
             constexpr iterator_base & operator++() {
                 do {
                     ++_offset;
-                } while (_offset < _owner->_items.size() && _owner->_items[_offset].state != State::occupied);
+                } while (_owner->_state[_offset] != State::occupied);
                 return *this;
             }   
 
@@ -129,14 +211,14 @@ namespace ecstl {
             auto start = idx;
             auto tombstone_idx = std::size_t(-1);
             do {
-                switch (_items[idx].state) {
+                switch (_state[idx]) {
                 case State::tombstone:
                     if (tombstone_idx == std::size_t(-1)) tombstone_idx = idx;
                     break;
                 case State::empty:
                     if (tombstone_idx == std::size_t(-1)) tombstone_idx = idx;
                     std::construct_at(&_items[tombstone_idx].key_value, std::move(key), V(std::forward<Args>(args)...));
-                    _items[tombstone_idx].state = State::occupied;
+                    _state[tombstone_idx] = State::occupied;
                     ++_size;
                     return std::pair(iterator(this, tombstone_idx), true);
                 case State::occupied:
@@ -148,7 +230,7 @@ namespace ecstl {
                 idx = (idx+1) % _items.size();
             } while (idx != start);
             //unreachable code
-            return std::pair(end(), true);
+            return std::pair(end(), false);
 
         }
 
@@ -159,7 +241,7 @@ namespace ecstl {
 
         constexpr iterator begin() {
             std::size_t idx = 0;
-            while (idx < _items.size() && _items[idx].state != State::occupied) ++idx;
+            while (idx < _items.size() && _state[idx] != State::occupied) ++idx;
             return iterator(this, idx);
         }
 
@@ -212,8 +294,12 @@ namespace ecstl {
         }
 
         constexpr void clear() {
-            for (auto &item: _items) {
-                item.clear();
+            std::size_t ofs = 0;
+            for (auto &item: _items) { 
+                if (_state[ofs] == State::occupied) {
+                            std::destroy_at(&item.key_value);
+                }
+                ++ofs;
             }
             _size = 0;
         }
@@ -229,8 +315,25 @@ namespace ecstl {
         [[no_unique_address]] Hash _hasher = {};
         [[no_unique_address]] Equal _eq = {};
 
-        std::vector<Item> _items;
+        FixedPrimitiveArray<Item> _items;
+        FixedPrimitiveArray<State> _state;
         std::size_t _size = 0;
+
+        static constexpr std::array<size_t, 28> prime_sizes = {
+            5ul, 11ul, 23ul, 47ul, 97ul, 197ul, 397ul,
+            797ul, 1597ul, 3203ul, 6421ul, 12853ul, 25717ul,
+            51437ul, 102877ul, 205759ul, 411527ul, 823117ul,
+            1646237ul, 3292489ul, 6584983ul, 13169977ul,
+            26339969ul, 52679969ul, 105359939ul, 210719881ul,
+            421439783ul, 842879579ul
+        };
+
+        static constexpr size_t next_capacity(size_t current) {
+            for (size_t p : prime_sizes)
+                if (p > current) return p;
+            return current * 2 + 1; 
+        }
+
 
         constexpr std::size_t map_key(const K &k) const {
             std::size_t hash = _hasher(k);
@@ -247,14 +350,12 @@ namespace ecstl {
         }
 
         constexpr void expand() {
-            auto newsz = std::max<std::size_t>(5,_items.size())*2+1;
-            auto old = std::move(_items);
-            _items.resize(newsz);
-            for (Item &c: old) {
-                if (c.state == State::occupied) {
-                    try_emplace(std::move(c.key_value.first), std::move(c.key_value.second));
-                }
+            auto newsz = next_capacity(_items.size());
+            OpenHashMap newMap(newsz, std::move(_hasher), std::move(_eq));
+            for (auto &kv : *this) {
+                newMap.try_emplace(std::move(kv.first), std::move(kv.second));
             }            
+            *this = std::move(newMap);
         }
 
         constexpr std::size_t find_index(const K &key) const {
@@ -262,7 +363,7 @@ namespace ecstl {
             auto idx = map_key(key);
             auto start = idx;
             do {
-                switch (_items[idx].state) {
+                switch (_state[idx]) {
                 case State::tombstone:
                     break;
                 case State::empty:
@@ -279,9 +380,9 @@ namespace ecstl {
         }
 
         constexpr void erase_index(std::size_t idx) {
-            if (idx >= _items.size() || _items[idx].state != State::occupied) return;
+            if (idx >= _items.size() || _state[idx] != State::occupied) return;
             std::destroy_at(&_items[idx].key_value);
-            _items[idx].state = State::tombstone;
+            _state[idx] = State::tombstone;
             --_size;
         }
 

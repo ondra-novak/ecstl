@@ -2,9 +2,13 @@
 
 using namespace ecstl;
 
+struct PrimHash {
+    constexpr std::size_t operator()(int x) const {return static_cast<std::size_t>(x);}
+};
+
 
 constexpr int test_open_hash() {
-    ecstl::OpenHashMap<int, unique_ptr<int>, decltype([](int x){return static_cast<std::size_t>(x);})> hh;
+    ecstl::OpenHashMap<int, unique_ptr<int>, PrimHash> hh;
     for (int i = 0; i < 100; ++i) {
         hh.emplace(i, make_unique<int>(i*2+1));
     }

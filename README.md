@@ -135,5 +135,92 @@ struct ComponentWithDrop {
 }
 ```
 
+## C Interface
+
+A C interface is provided through a library libecsc. The C interface is limited compared to the C++ interface, but allows basic operations such as creating entities, assigning components, and querying components. Components are untyped, so you don't have
+access to component variants. The component data are copied as binary blobs directly into components storage. You can define
+deleter functions for components that need special handling when destroyed.
+
+### Types
+```c
+/// Opaque registry type
+typedef struct _ecs_registry_type ecs_registry_t;
+/// Entity type
+typedef size_t ecs_entity_t;
+/// Component type
+typedef size_t ecs_component_t;
+/// Deleter function type for component data
+typedef void (*ecs_component_deleter_t)(void *data, size_t sz);
+
+```
+
+### Create and destroy objects
+
+```c
+ecs_registry_t * ecs_create_registry(void);
+void ecs_destroy_registry(ecs_registry_t * registry);
+ecs_entity_t ecs_create_entity(ecs_registry_t * reg);
+ecs_entity_t ecs_create_named_entity(ecs_registry_t * reg, const char *name);
+void ecs_destroy_entity(ecs_registry_t * reg, ecs_entity_t e);
+ecs_component_t ecs_register_component(ecs_registry_t * reg, const char *name, ecs_component_deleter_t deleter);
+void ecs_unregister_component(ecs_registry_t * reg, ecs_component_t component);
+```
+
+### store and retrieve components
+
+```c
+int ecs_store(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size);
+const void *ecs_retrieve(const ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+const void *ecs_retrieve_mut(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+void ecs_remove(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component);
+```
+
+### query / enumeration 
+
+Enumeration and querying is provided through a callback mechanism.
+
+```c
+typedef int (*callback)(ecs_entity_t, const void **data, void *context);
+```
+where:
+* `entity` - the entity id
+* `data` - pointer to array of component data pointers, you need to cast them to appropriate types. Count of pointers is equal to number of components requested in the query.
+* `context` - user provided context pointer
+
+```c
+int ecs_view_iterate(ecs_registry_t * reg, int component_count, const ecs_component_t *components,
+            int (*callback)(ecs_entity_t, const void **data, void *context), void *context);
+int ecs_view_iterate_mut(ecs_registry_t * reg, int component_count, const ecs_component_t *components,
+            int (*callback)(ecs_entity_t, void **data, void *context), void *context);
+```
+
+### grouping
+
+Similar to C++ groups, you can create a group for frequently accessed components.
+
+```c
+int ecs_group(ecs_registry_t * reg, int component_count, const ecs_component_t *components);
+```
+
+### Miscellaneous
+
+```c
+int ecs_has(const ecs_registry_t *reg, ecs_entity_t entity, int component_count, const ecs_component_t *components);
+size_t ecs_get_entity_name(ecs_registry_t * reg, ecs_entity_t e, char *buf, size_t bufsize);
+ecs_entity_t ecs_find_entity_by_name(ecs_registry_t * reg, const char *name);
+```
+
+### Multithreading
+
+```c
+void lock_ecs_registry(ecs_registry_t * reg);
+void unlock_ecs_registry(ecs_registry_t * reg);
+void lock_ecs_registry_shared(ecs_registry_t * reg);
+void unlock_ecs_registry_shared(ecs_registry_t * reg);
+```
+
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+
