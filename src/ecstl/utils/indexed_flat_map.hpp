@@ -1,7 +1,7 @@
 #pragma once
 
 #include "paired_iterator.hpp"
-#include "utils/open_hash_map.hpp"
+#include "open_hash_map.hpp"
 #include <vector>
 
 namespace ecstl {

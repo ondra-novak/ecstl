@@ -2,7 +2,7 @@
 #include "entity.hpp"
 #include "component.hpp"
 #include "registry.hpp"
-#include "indexed_flat_map.hpp"
+#include "utils/indexed_flat_map.hpp"
 #include <typeinfo>
 #include <memory>
 #include <unordered_map>

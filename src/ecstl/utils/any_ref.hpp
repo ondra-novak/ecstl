@@ -1,7 +1,7 @@
 #pragma once
 
 #include "optional_ref.hpp"
-#include "utils/class_ident.hpp"
+#include "class_ident.hpp"
 #include <type_traits>
 #include <stdexcept>
 
