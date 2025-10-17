@@ -202,18 +202,6 @@ int ecs_group(ecs_registry_t * reg, int component_count, const ecs_component_t *
  */
 int ecs_has(const ecs_registry_t *reg, ecs_entity_t entity, int component_count, const ecs_component_t *components);
 
-/// Lock the registry for writing (exclusive access)
-void lock_ecs_registry(ecs_registry_t * reg);
-/// Unlock the registry for writing
-/** You should hold lock while your code is working
- * with returned pointers (i.e. component data).
-  */
-void unlock_ecs_registry(ecs_registry_t * reg);
-/// Lock the registry for reading (shared access)
-void lock_ecs_registry_shared(ecs_registry_t * reg);
-/// Unlock the registry for reading
-void unlock_ecs_registry_shared(ecs_registry_t * reg);
-
 
 #ifdef __cplusplus
 }

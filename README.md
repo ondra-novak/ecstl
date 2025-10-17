@@ -210,14 +210,6 @@ size_t ecs_get_entity_name(ecs_registry_t * reg, ecs_entity_t e, char *buf, size
 ecs_entity_t ecs_find_entity_by_name(ecs_registry_t * reg, const char *name);
 ```
 
-### Multithreading
-
-```c
-void lock_ecs_registry(ecs_registry_t * reg);
-void unlock_ecs_registry(ecs_registry_t * reg);
-void lock_ecs_registry_shared(ecs_registry_t * reg);
-void unlock_ecs_registry_shared(ecs_registry_t * reg);
-```
 
 
 ## License
