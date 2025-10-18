@@ -5,22 +5,20 @@ namespace ecstl {
 
 
     template<typename T>
-    class FixedPrimitiveArray {
+    class FixedPrimitiveArray: public std::span<T> {
     public:
 
         constexpr FixedPrimitiveArray() = default;
-        constexpr FixedPrimitiveArray(std::size_t cnt) {
-            _ptr = new T[cnt]();
-            _size = cnt;
-        }
+        constexpr FixedPrimitiveArray(std::size_t cnt):std::span<T>(cnt?new T[cnt]:nullptr, cnt) {}
         constexpr ~FixedPrimitiveArray() {
-            delete [] _ptr;
+            T *ptr = this->data();
+            delete [] ptr;
         }
 
         constexpr FixedPrimitiveArray(const FixedPrimitiveArray &other)
             :FixedPrimitiveArray(other._size())
         {
-            std::copy(other.begin(), other.end(), begin());
+            std::copy(other.begin(), other.end(), this->begin());
         }
         constexpr FixedPrimitiveArray &operator=(const FixedPrimitiveArray &other) {
             if (this != &other) {
@@ -29,10 +27,10 @@ namespace ecstl {
             }
             return *this;
         }
-        constexpr FixedPrimitiveArray(FixedPrimitiveArray &&other)
-            :_ptr(other._ptr), _size(other._size) {
-                other._ptr = nullptr; other._size = 0;
-            }
+        constexpr FixedPrimitiveArray(FixedPrimitiveArray &&other):std::span<T>(std::move(other)) {
+            other.std::span<T>::operator=(std::span<T>());
+        }
+
 
         constexpr FixedPrimitiveArray &operator=(FixedPrimitiveArray &&other) {
             if (this != &other) {
@@ -43,21 +41,7 @@ namespace ecstl {
         }
         
 
-        constexpr T *begin() {return _ptr;}
-        constexpr T *end() {return _ptr+_size;}
-        constexpr const T *begin() const {return _ptr;}
-        constexpr const T *end() const {return _ptr+_size;}
-        constexpr const T *cbegin() const {return _ptr;}
-        constexpr const T *cend() const {return _ptr+_size;}
 
-        constexpr T &operator[](std::size_t idx) {return _ptr[idx];}
-        constexpr const T &operator[](std::size_t idx) const {return _ptr[idx];}
-
-        constexpr std::size_t size() const {return _size;}
-
-    protected:
-        T *_ptr = nullptr;
-        std::size_t _size = 0;
     };
 
 
@@ -94,6 +78,7 @@ namespace ecstl {
             ,_state(size+1)
             ,_size(0)
             {
+                for (std::size_t i = 0; i<size;++i) _state[i] = State::empty;                
                 _state[size] = State::occupied; //after last item there is occupied item serves as stop
             }
         
