@@ -3,6 +3,7 @@
 #include "component.hpp"
 #include "utils/optional_ref.hpp"
 #include "view.hpp"
+#include "view2.hpp"
 
 #include <string>
 #include <concepts>
@@ -469,6 +470,9 @@ public:
 
     }
 
+    
+
+
     ///Create a view for iterating over entities with specific components
     /** @tparam Components Types of components to be included in the view
      *  @param ids Optional list of component variant IDriants to include in the view. If empty, default component variant ID (0) is used for all components.
@@ -479,22 +483,25 @@ public:
      * 
      */
     template<typename ... Components>
-    constexpr View<GenericRegistry *, Components...> view(std::initializer_list<ComponentTypeID> ids = {}) {
-        return View<GenericRegistry *, Components...>(this,ids);
+    constexpr auto view(std::initializer_list<ComponentTypeID> ids = {}) const {
+        return view<Components...>(std::span<const ComponentTypeID>(ids));
     }
 
     template<typename ... Components>
-    constexpr View<GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) {
-        return View<GenericRegistry *, Components...>(this,ids);
-    }
-    template<typename ... Components>
-    constexpr View<const GenericRegistry *, Components...> view(std::initializer_list<ComponentTypeID> ids = {}) const {
-        return View<const GenericRegistry *, Components...>(this,ids);
-    }
+    constexpr auto view(std::span<const ComponentTypeID> ids) const {
+        std::array<ComponentTypeID, sizeof...(Components)> idsarr;
+        auto itr = ids.begin();
+        for (auto  &x: idsarr) {
+            if (itr == ids.end()) x = {};
+            else {
+                x = *itr;
+                ++itr;
+            }
+        }
 
-    template<typename ... Components>
-    constexpr View<const GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) const {
-        return View<const GenericRegistry *, Components...>(this,ids);
+        auto creator = []<templa
+
+        
     }
 
 
