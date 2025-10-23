@@ -65,6 +65,10 @@ int main() {
     db.set<TestComponent>(ccc,{55});
     db.set<TestComponent>(bbb,example_component,{42});
  
+    for(auto &v : db.get<const TestComponent>(ccc)) {
+        std::cout << "ccc has TestComponent: " << v.foo << std::endl;
+        std::cout << ecstl::type_name<decltype(v)> << std::endl;
+    }
 
 
     db.for_each_component(aaa, [](ecstl::AnyRef ref){
