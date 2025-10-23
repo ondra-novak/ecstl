@@ -3,7 +3,6 @@
 #include "component.hpp"
 #include "utils/optional_ref.hpp"
 #include "view.hpp"
-#include "view2.hpp"
 
 #include <string>
 #include <concepts>
@@ -471,6 +470,42 @@ public:
     }
 
     
+    template<typename P>
+    static constexpr auto default_empty = PoolType<P>();
+
+
+
+    template<typename ... Components>
+    constexpr auto view(std::span<const ComponentTypeID> ids) const {
+        std::array<ComponentTypeID, sizeof...(Components)> idsarr;
+        auto itr = ids.begin();
+        for (auto  &x: idsarr) {
+            if (itr == ids.end()) x = {};
+            else {
+                x = *itr;
+                ++itr;
+            }
+        }
+        using Pools = std::tuple<std::add_pointer_t<std::conditional_t<std::is_const_v<Components>, 
+            const PoolType<std::remove_cvref_t<Components> >,
+            PoolType<std::remove_cvref_t<Components> > > > ...  >;
+        Pools pools;
+
+        using NormTypes = std::tuple<std::remove_cvref_t<Components> ...>;
+
+        sequence_iterate<sizeof...(Components)>([&](auto idx){
+            using T = std::tuple_element_t<idx, NormTypes>;
+            using U = std::tuple_element_t<idx, Pools> ;
+            auto f = _storage.find(Key{component_type_id<T>, idsarr[idx]});
+            if (f == _storage.end()) {
+                std::get<idx>(pools) = const_cast<U>(&default_empty<T>);
+            } else {
+                std::get<idx>(pools) = static_cast<U>(f->second.get());
+            }
+        });
+
+        return View<Pools>(pools);
+    }
 
 
     ///Create a view for iterating over entities with specific components
@@ -486,24 +521,7 @@ public:
     constexpr auto view(std::initializer_list<ComponentTypeID> ids = {}) const {
         return view<Components...>(std::span<const ComponentTypeID>(ids));
     }
-
-    template<typename ... Components>
-    constexpr auto view(std::span<const ComponentTypeID> ids) const {
-        std::array<ComponentTypeID, sizeof...(Components)> idsarr;
-        auto itr = ids.begin();
-        for (auto  &x: idsarr) {
-            if (itr == ids.end()) x = {};
-            else {
-                x = *itr;
-                ++itr;
-            }
-        }
-
-        auto creator = []<templa
-
-        
-    }
-
+    
 
     ///Check whether an entity has a component of type T with specific component variant ID
     /** @tparam Component Type of the component to be checked

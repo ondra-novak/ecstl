@@ -140,7 +140,7 @@ public:
         Super::erase(e);
     }
 
-    virtual size_t size() const {
+    virtual constexpr  size_t size() const {
         return Super::size();
     }
     virtual AnyRef entity(Entity e) {
