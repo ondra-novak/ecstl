@@ -81,7 +81,7 @@ struct ComponentTraits<T> {
 
 ///Get component type ID for type T (constexpr)
 template<typename T>
-constexpr auto component_type_id = ComponentTraits<T>::id;
+constexpr auto component_type_id = ComponentTraits<std::remove_cvref_t<T> >::id;
 
 
 ///Interface for component storage
