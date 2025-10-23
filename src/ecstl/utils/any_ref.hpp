@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ref.hpp"
+#include "optional_ref.hpp"
 #include "class_ident.hpp"
 #include <type_traits>
 #include <stdexcept>
@@ -49,9 +49,9 @@ public:
 
     ///Get OptionalRef to type T (empty if type does not match)
     template<typename T>
-    Ref<T> get_if() const {
-        if (holds_alternative<T>(*this)) return Ref<T>(get<T>(*this));
-        else return Ref<T>();
+    OptionalRef<T> get_if() const {
+        if (holds_alternative<T>(*this)) return OptionalRef<T>(get<T>(*this));
+        else return OptionalRef<T>();
     }
 
     
@@ -105,9 +105,9 @@ public:
 
     ///Get OptionalRef to type T (empty if type does not match)
    template<typename T>
-    Ref<const T> get_if() const {
+    OptionalRef<const T> get_if() const {
         if (holds_alternative<T>(*this)) return OptionalRef<const T>(get<T>(*this));
-        else return Ref<const T>();
+        else return OptionalRef<const T>();
     }
 
 
