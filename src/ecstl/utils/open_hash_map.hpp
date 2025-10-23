@@ -236,7 +236,7 @@ namespace ecstl {
 
         constexpr const_iterator begin() const {
             std::size_t idx = 0;
-            while (idx < _items.size() && _items[idx].state != State::occupied) ++idx;
+            while (idx < _items.size() && _state[idx] != State::occupied) ++idx;
             return const_iterator(this, idx);
         }
 

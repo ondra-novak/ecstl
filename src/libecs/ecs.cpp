@@ -51,7 +51,7 @@ ecs_component_t ecs_register_component(ecs_registry_t * reg, const char *name, e
 {
     auto r = cast_from_c(reg);
     auto type = ComponentTypeID(name);
-    auto pool = r->get_component_pool<BinaryComponentView>(type, true);
+    auto pool = r->create_component_pool<BinaryComponentView>(type);
     pool->set_deleter(deleter);
     return type.get_id();
 }
@@ -64,7 +64,8 @@ void ecs_unregister_component(ecs_registry_t * reg, ecs_component_t component)
 int ecs_store(ecs_registry_t * reg, ecs_entity_t entity, ecs_component_t component, const void *data, size_t size)
 {
     auto r = cast_from_c(reg);
-    auto pool = r->get_component_pool<BinaryComponentView>(ComponentTypeID(component), true);
+    auto pool = r->get_component_pool<BinaryComponentView>(ComponentTypeID(component));
+    if (!pool) pool  = r->create_component_pool<BinaryComponentView>(ComponentTypeID(component));
     auto val =  ConstBinaryComponentView(reinterpret_cast<const char *>(data),size);
     auto ins = pool->try_emplace(Entity(entity),val);
     if (!ins.second) {

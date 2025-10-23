@@ -17,10 +17,47 @@ namespace ecstl {
         {p.operator->()}; // Arrow operator (like unique_ptr, shared_ptr)
     };
 
+    /// Safe begin function for pointer-like containers
+    /**
+     * Returns the begin iterator if the pointer is not null,
+     * otherwise returns a default-constructed iterator.
+     */
+    template<IsPointerLike T>
+    constexpr auto safe_begin(T ptr) -> decltype(ptr->begin()) {
+        using X = decltype(ptr->begin());
+        return ptr?ptr->begin():X();
+    }
+
+    /// Safe end function for pointer-like containers
+    /**
+     * Returns the end iterator if the pointer is not null,
+     * otherwise returns a default-constructed iterator.
+     */
+    template<IsPointerLike T>
+    constexpr auto safe_end(T ptr) -> decltype(ptr->end()) {
+        using X = decltype(ptr->end());
+        return ptr?ptr->end():X();
+    }
+
+    /// Safe find function for pointer-like containers
+    /**
+     * Returns the result of find if the pointer is not null,
+     * otherwise returns a default-constructed iterator.
+     */
+    template<IsPointerLike T, typename U>
+    constexpr auto safe_find(T ptr, const U &key) -> decltype(ptr->find(key)) {
+        using X = decltype(ptr->find(key));
+        return ptr?ptr->find(key):X();
+    }   
+
+    ///A view above multiple pools allows to connect components by using entity
+    /**
+     * @tparam PoolsTuple a tuple of pointer or pointer-like objects with pools to join. Must be
+     * tuple of pointers otherwise undefined 
+     */
     template<typename PoolsTuple>
     class View;
     
-
     template<IsPointerLike ... Pools>
     class View<std::tuple<Pools...> >: public std::ranges::view_interface<View<std::tuple<Pools... > > >{
     public:
@@ -51,25 +88,29 @@ namespace ecstl {
                 :_owner(owner),_iters(std::move(iters)),_master(master) {
                     post_advance();
                 }            
-            constexpr ~Iterator() {
-                if (_cache_filled) std::destroy_at(&_cache);
-            }
 
             constexpr Iterator(const Iterator &other)
-                :_owner(other._owner), _iters(other._iters), _master(other._master), _cache_filled(other._cache_filled) {
-                    if (_cache_filled) {
-                        std::construct_at(&_cache, other._cache);
-                    }
-            }
+                :_owner(other._owner), _iters(other._iters), _master(other._master) {}
+
+            constexpr Iterator(Iterator &&other)
+                :_owner(std::move(other._owner)), _iters(std::move(other._iters)), _master(other._master) {}
 
             constexpr Iterator &operator=(const Iterator &other) {
                 if (this != &other) {
                     _owner = other._owner;
                     _iters = other._iters;
                     _master = other._master;
-                    if (_cache_filled) std::destroy_at(&_cache);
-                    _cache_filled = other._cache_filled;
-                    if (_cache_filled) std::construct_at(&_cache, other._cache);
+                    _cache.reset();
+                }
+                return *this;
+            }
+            
+            constexpr Iterator &operator=(Iterator &&other) {
+                if (this != &other) {
+                    _owner = std::move(other._owner);
+                    _iters = std::move(other._iters);
+                    _master = other._master;
+                    _cache.reset();
                 }
                 return *this;
             }
@@ -82,7 +123,7 @@ namespace ecstl {
             constexpr bool operator==(const Sentinel &) const {
                 bool is_end = true;
                 sequence_iterate<std::tuple_size_v<Iterators> >([&](auto idx){
-                    if (idx == _master) is_end = std::get<idx>(_iters) == std::get<idx>(_owner->_pools)->end();                                        
+                    if (idx == _master) is_end = std::get<idx>(_iters) == safe_end(std::get<idx>(_owner->_pools));                                        
                 });
                 return is_end;
             }
@@ -100,27 +141,25 @@ namespace ecstl {
             }
 
             constexpr reference operator*() const {
-                return _cache;
+                fill_cache();
+                return _cache.value();
             }
 
             constexpr pointer operator->() const {
-                return &_cache;
+                fill_cache();
+                return &_cache.value();
             }
 
         public:
             const View *_owner = nullptr;
             Iterators _iters = {};
             std::size_t _master = 0;
-            union {
-                mutable Values  _cache;                
-            };
-            mutable bool _cache_filled = false;
+            mutable std::optional<Values> _cache;
 
             constexpr void fill_cache() const {
+                if (_cache.has_value()) return;
                 const Entity &ent = std::get<0>(_iters)->first;
-                if (_cache_filled) std::destroy_at(&_cache);
-                std::construct_at(&_cache,std::apply([&](auto &... iters){return std::tie(ent,iters->second...);}, _iters));
-                _cache_filled = true;
+                _cache.emplace(std::apply([&](auto &... iters){return std::tie(ent,iters->second...);}, _iters));
             }
 
 
@@ -128,7 +167,7 @@ namespace ecstl {
                 return sequence_iterate<std::tuple_size_v<Iterators> >(std::optional<Entity>(), 
                     [&](std::optional<Entity> r, auto idx) -> std::optional<Entity> {
                         if (_master != idx) return r;                    
-                        auto e = std::get<idx>(_owner->_pools)->end();
+                        auto e = safe_end(std::get<idx>(_owner->_pools));
                         auto c = std::get<idx>(_iters);
                         if (e == c) return std::nullopt;
                         return c->first;
@@ -139,6 +178,7 @@ namespace ecstl {
                 sequence_iterate<std::tuple_size_v<Iterators> >([&](auto idx){
                     ++std::get<idx>(_iters);
                 });
+                _cache.reset();
             }
 
             constexpr void post_advance() {
@@ -150,12 +190,11 @@ namespace ecstl {
                         if (!b || idx == _master) return b;
                         auto &i = std::get<idx>(_iters);
                         auto &p = std::get<idx>(_owner->_pools);
-                        auto e = p->end();
+                        auto e = safe_end(p);
                         if (i != e && i->first == ee) return true;
-                        i = p->find(ee);
+                        i = safe_find(p,ee);
                         return i != e;
                     })) {
-                        fill_cache();
                         break;
                     }
                 }
@@ -170,14 +209,14 @@ namespace ecstl {
             std::size_t best = 0;
             sequence_iterate<std::tuple_size_v<PoolsTuple> >([&](auto idx){
                 auto &p = std::get<idx>(_pools);
-                auto sz = p->size();
+                auto sz = p?p->size():0;
                 if (sz < volume) {
                     best = idx;
                     volume = sz;
                 }                
             });            
             return Iterator(this, std::apply([&](auto & ... ps) {
-                return std::make_tuple(ps->begin()...);
+                return std::make_tuple(safe_begin(ps)...);
             }, _pools), best);
         }
 
@@ -186,6 +225,8 @@ namespace ecstl {
                   // Free function helpers pro ranges machinery
         friend constexpr Iterator begin(View const &v) noexcept { return v.begin(); }
         friend constexpr Iterator end(View const &v) noexcept { return v.end(); }
+
+        
 
 
     private:

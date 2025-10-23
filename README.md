@@ -136,6 +136,29 @@ struct ComponentWithDrop {
     void drop() {delete [] data;}  //- called when component is removed, replaced or when registry is destroyed
 }
 ```
+## Notes
+
+### Qualifiers and non-const access to components in a const registry
+
+All components are treated as a "payload" that the Registry only manages. A const-qualified get or find method may therefore return a non-const reference, because modifying the contents of a component does not affect the Registry's own state. When using locks, the Registry can be locked with a shared lock while component contents are still modified — the lock protects only the Registry object's internal data, not the user-managed payload.
+
+If you need to enforce read-only access to components, specify the const qualifier for component types in methods such as get(), find(), view(), etc.
+
+```cpp
+
+for (auto &r: r.view<const C1, const C2, const C3>()) {...}
+r.get<const C1>();
+r.all_of<const C1>();
+r.find<const C1>();
+```
+
+In other operations, qualifiers are not allowed and are generally ignored.
+
+
+```cpp
+r.set<const C1> ~= r.set<C1>
+```
+
 
 ## C Interface
 

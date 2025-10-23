@@ -7,18 +7,18 @@
 namespace ecstl {
 
     template<typename T>
-    class OptionalRef;
+    class Ref;
 
  
 
 
 
     template<typename T>
-    class OptionalRef {
+    class Ref {
     public:
-        constexpr OptionalRef() = default;
-        constexpr OptionalRef(std::nullopt_t):_ref(nullptr) {}
-        constexpr OptionalRef(T &val):_ref(&val) {};
+        constexpr Ref() = default;
+        constexpr Ref(std::nullopt_t):_ref(nullptr) {}
+        constexpr Ref(T &val):_ref(&val) {};
 
         constexpr operator bool() const { return _ref != nullptr;}
         constexpr T *operator->() const {return _ref;}
@@ -64,8 +64,8 @@ namespace ecstl {
 
 
     template<typename T>
-    class OptionalRef<OptionalRef<T> >: public OptionalRef<T> {
+    class Ref<Ref<T> >: public Ref<T> {
     public:
-        using OptionalRef<T>::OptionalRef;
+        using Ref<T>::Ref;
     };
 }

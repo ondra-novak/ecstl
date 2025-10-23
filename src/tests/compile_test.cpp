@@ -3,9 +3,6 @@
 #include <iostream>
 #include <ranges>
 
-template ecstl::Entity ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::create_entity(std::string_view);
-template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::all_of<ecstl::EntityName>();
-template auto ecstl::GenericRegistry<ecstl::ComponentPool, ecstl::IndexedFlatMapStorage>::all_of<ecstl::EntityName>() const;
 
 struct TestComponent {
     int foo;
