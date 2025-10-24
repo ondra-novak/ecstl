@@ -55,7 +55,7 @@ void testOpenHash() {
 int main() {
     testOpenHash();
 
-    ecstl::Registry db;
+    ecstl::RegistrySharedPtr db;
     auto aaa = db.create_entity("aaa");
     auto bbb = db.create_entity("bbb");
     auto ccc = db.create_entity("ccc");

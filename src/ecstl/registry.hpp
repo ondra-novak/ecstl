@@ -114,7 +114,7 @@ struct DefaultRegistryTraits {
      * @return ref object
      */
     template<typename T>
-    static constexpr Ref<T> create_ref(T &data, [[maybe_unused]] const ComponentPoolPtr<T> &ptr) {
+    static constexpr Ref<T> create_ref(T &data, [[maybe_unused]] const auto &component_pool_ptr) {
         return Ref<T>(data);
     }
     ///Create empty ref object
@@ -193,7 +193,7 @@ public:
     };
 
     ///Type of component pool pointer
-    using PPool = unique_ptr<IComponentPool>;
+    using PPool = typename Traits::PoolSmartPtr;
 
     using Storage = typename Traits::template RegistryStorage<Key, PPool>;
 
