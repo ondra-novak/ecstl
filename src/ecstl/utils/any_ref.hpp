@@ -1,7 +1,7 @@
 #pragma once
 
 #include "optional_ref.hpp"
-#include "class_ident.hpp"
+#include "type_name.hpp"
 #include <type_traits>
 #include <stdexcept>
 
@@ -15,12 +15,12 @@ class AnyRef {
 public:
 
     ///Create empty AnyRef
-    constexpr AnyRef():_ref(nullptr), _type(class_hash<std::nullptr_t>) {}
+    constexpr AnyRef():_ref(nullptr), _type(type_name_hash<std::nullptr_t>) {}
 
     ///Create AnyRef from a Type (must not be AnyRef or ConstAnyRef)
     template<typename T>
     requires(!std::is_same_v<std::decay_t<T>, AnyRef>)
-    constexpr AnyRef(T &val):_ref(&val),_type(class_hash<T>) {}
+    constexpr AnyRef(T &val):_ref(&val),_type(type_name_hash<T>) {}
     ///Copy and move
     constexpr AnyRef(const AnyRef &other) = default;
     ///Move constructor
@@ -38,7 +38,7 @@ public:
     ///Check whether AnyRef holds a value of type T
     template<typename T>
     constexpr friend bool holds_alternative(const AnyRef &inst) {
-        return inst._type == class_hash<T>;
+        return inst._type == type_name_hash<T>;
     }
 
     ///Get the value of type T 
@@ -69,7 +69,7 @@ class ConstAnyRef {
 public:
 
     ///Create empty ConstAnyRef
-    constexpr ConstAnyRef():_ref(nullptr), _type(class_hash<std::nullptr_t>) {}
+    constexpr ConstAnyRef():_ref(nullptr), _type(type_name_hash<std::nullptr_t>) {}
 
     ///Create ConstAnyRef from AnyRef
     constexpr ConstAnyRef(const AnyRef &ref):_ref(ref._ref),_type(ref._type) {}
@@ -77,7 +77,7 @@ public:
     ///Create ConstAnyRef from a Type (must not be AnyRef or ConstAnyRef)
     template<typename T>
     requires(!std::is_same_v<std::decay_t<T>, AnyRef> && !std::is_same_v<std::decay_t<T>, ConstAnyRef>)
-    constexpr ConstAnyRef(const T &val):_ref(&val),_type(class_hash<T>) {}
+    constexpr ConstAnyRef(const T &val):_ref(&val),_type(type_name_hash<T>) {}
 
     ///Copy and move
     constexpr ConstAnyRef(const ConstAnyRef &other) = default;
@@ -94,7 +94,7 @@ public:
     ///Check whether ConstAnyRef holds a value of type T
     template<typename T>
     constexpr friend bool holds_alternative(const ConstAnyRef &inst) {
-        return inst._type == class_hash<T>;
+        return inst._type == type_name_hash<T>;
     }
 
     ///Get the value of type T 

@@ -100,8 +100,6 @@ Assume r =  Registry();
 * **r.get&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Get a reference to a component of an entity with a specific variant. Both const and non-const versions are available
 * **r.remove&lt;ComponentType&gt;(Entity e)** - Remove a component from an entity
 * **r.remove&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Remove a component with a specific variant from an entity
-* **r.find&lt;ComponentType&gt;(Entity e)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
-* **r.find&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
 * **r.remove_all_of&lt;ComponentType&gt;()** - Remove all components of a specific type from all entities.
 * **r.remove_all_of&lt;ComponentType&gt;(ComponentTypeID variant)** - Remove all components of a specific type and variant from all entities.
 
@@ -157,6 +155,27 @@ In other operations, qualifiers are not allowed and are generally ignored.
 
 ```cpp
 r.set<const C1> ~= r.set<C1>
+```
+
+### Validity of views and iterators in various situations
+
+- Changes in the registry do not invalidate a view as long as it is not being iterated. Exception: deleting the component pool for a type that is part of the iteration is undefined behavior for Registry configurations without shared pointers (the default).
+- View iterators
+    - remain valid for all const operations
+    - remain valid when component contents is being modified
+    - remain valid if components that are not currently being iterated are added or removed
+    - **become invalid if a component that is part of the current iteration is added or removed**
+
+**Recommendation:**
+
+If you need to delete components that are currently being iterated, create a list of affected entities and perform deletions outside the iteration loop.
+
+```cpp
+std::vector<Entity> list;
+for (auto [e,c1,c2]: r.view<C1,...>()) {
+    if (need_remove_this(c1)) list.push_back(e);
+}
+for (auto e: list) r.remove<C1>(e);
 ```
 
 
