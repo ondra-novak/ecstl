@@ -100,8 +100,6 @@ Assume r =  Registry();
 * **r.get&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Get a reference to a component of an entity with a specific variant. Both const and non-const versions are available
 * **r.remove&lt;ComponentType&gt;(Entity e)** - Remove a component from an entity
 * **r.remove&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Remove a component with a specific variant from an entity
-* **r.find&lt;ComponentType&gt;(Entity e)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
-* **r.find&lt;ComponentType&gt;(Entity e, ComponentTypeID variant)** - Find a component of an entity. Returns an iterator or end() if not found. Both const and non-const versions are available.
 * **r.remove_all_of&lt;ComponentType&gt;()** - Remove all components of a specific type from all entities.
 * **r.remove_all_of&lt;ComponentType&gt;(ComponentTypeID variant)** - Remove all components of a specific type and variant from all entities.
 
@@ -136,6 +134,50 @@ struct ComponentWithDrop {
     void drop() {delete [] data;}  //- called when component is removed, replaced or when registry is destroyed
 }
 ```
+## Notes
+
+### Qualifiers and non-const access to components in a const registry
+
+All components are treated as a "payload" that the Registry only manages. A const-qualified get or find method may therefore return a non-const reference, because modifying the contents of a component does not affect the Registry's own state. When using locks, the Registry can be locked with a shared lock while component contents are still modified — the lock protects only the Registry object's internal data, not the user-managed payload.
+
+If you need to enforce read-only access to components, specify the const qualifier for component types in methods such as get(), find(), view(), etc.
+
+```cpp
+
+for (auto &r: r.view<const C1, const C2, const C3>()) {...}
+r.get<const C1>();
+r.all_of<const C1>();
+r.find<const C1>();
+```
+
+In other operations, qualifiers are not allowed and are generally ignored.
+
+
+```cpp
+r.set<const C1> ~= r.set<C1>
+```
+
+### Validity of views and iterators in various situations
+
+- Changes in the registry do not invalidate a view as long as it is not being iterated. Exception: deleting the component pool for a type that is part of the iteration is undefined behavior for Registry configurations without shared pointers (the default).
+- View iterators
+    - remain valid for all const operations
+    - remain valid when component contents is being modified
+    - remain valid if components that are not currently being iterated are added or removed
+    - **become invalid if a component that is part of the current iteration is added or removed**
+
+**Recommendation:**
+
+If you need to delete components that are currently being iterated, create a list of affected entities and perform deletions outside the iteration loop.
+
+```cpp
+std::vector<Entity> list;
+for (auto [e,c1,c2]: r.view<C1,...>()) {
+    if (need_remove_this(c1)) list.push_back(e);
+}
+for (auto e: list) r.remove<C1>(e);
+```
+
 
 ## C Interface
 

@@ -162,5 +162,20 @@ constexpr bool drop_test() {
 
 static_assert(drop_test());
 
+struct NotRegisteredComponent {
+    int x;
+};
 
+constexpr bool empty_view_test()  {
+    Registry rg = prepare_test_registry();
+
+    for ([[maybe_unused]] const auto &_: rg.view<EntityName, NotRegisteredComponent>()) {
+        return false;
+    }
+
+    return true;
+}
+
+
+static_assert(empty_view_test());
 

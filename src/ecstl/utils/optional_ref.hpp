@@ -52,7 +52,8 @@ namespace ecstl {
             }
         }
 
-        
+        constexpr T *begin() const {return _ref;}
+        constexpr T *end() const {return _ref?_ref+1:_ref;}
 
 
 

@@ -81,7 +81,7 @@ struct ComponentTraits<T> {
 
 ///Get component type ID for type T (constexpr)
 template<typename T>
-constexpr auto component_type_id = ComponentTraits<T>::id;
+constexpr auto component_type_id = ComponentTraits<std::remove_cvref_t<T> >::id;
 
 
 ///Interface for component storage
@@ -96,8 +96,6 @@ public:
     constexpr virtual size_t size() const = 0;
     /// Retrieve entity as AnyRef if exists.
     constexpr virtual AnyRef entity(Entity e) = 0;
-    /// Retrieve entity as ConstAnyRef if exists.
-    constexpr virtual ConstAnyRef entity(Entity e) const = 0;
 };
 
 
@@ -140,18 +138,13 @@ public:
         Super::erase(e);
     }
 
-    virtual size_t size() const {
+    virtual constexpr  size_t size() const {
         return Super::size();
     }
     virtual AnyRef entity(Entity e) {
         auto iter = Super::find(e);
         if (iter == Super::end()) return AnyRef{};
         else return AnyRef(iter->second);
-    }
-    virtual ConstAnyRef entity(Entity e) const {
-        auto iter = Super::find(e);
-        if (iter == Super::end()) return ConstAnyRef{};
-        else return ConstAnyRef(iter->second);
     }
 };
 

@@ -3,6 +3,7 @@
 #include "component.hpp"
 #include "utils/optional_ref.hpp"
 #include "view.hpp"
+#include "utils/indexed_flat_map.hpp"
 
 #include <string>
 #include <concepts>
@@ -37,20 +38,122 @@ protected:
     std::vector<char> name;
 };
 
-///Concepts for component visitor functions (non-const)
+///Concepts for component visitor functions
 template<typename T>
 concept ComponentVisitor = std::is_invocable_v<T, AnyRef>
     || std::is_invocable_v<T, AnyRef, ComponentTypeID>
     || std::is_invocable_v<T, AnyRef, ComponentTypeID, ComponentTypeID>;
 
-///Concepts for component visitor functions (const)
+
+
+
+///Default registry traist (for singlethreading)
+struct DefaultRegistryTraits {
+
+    template<typename K, typename V>
+    class PoolStorage: public IndexedFlatMap<K, V, HashOfKey<K>, std::equal_to<K> > {};
+
+    template<typename K, typename V>
+    class RegistryStorage: public OpenHashMap<K, V, HashOfKey<K>, std::equal_to<K> > {};
+
+
+
+
+
+    ///type which normalizes T to component type
+    /** This performs removing const volatile reference as these qualifiers are not used */
+    template<typename T>
+    using ComponentNormalized = std::remove_cvref_t<T>;
+
+    
+    ///type which specifies type used to store components of T
+    template<typename T>
+    using ComponentPool = GenericComponentPool<ComponentNormalized<T>, PoolStorage>;   
+
+    ///smart pointer to hold abstract component pool
+    using PoolSmartPtr = unique_ptr<IComponentPool>;
+    
+    
+    ///pointer like object to point to component tool
+    template<typename T>
+    using ComponentPoolPtr =  std::conditional_t<std::is_const_v<T>, const ComponentPool<T> *, ComponentPool<T> *>;
+    
+    
+    template<typename T>
+    static constexpr auto component_type_id = ComponentTraits<ComponentNormalized<T> >::id;
+
+
+    ///casts smart pointer to pointer-like object
+    /**
+     * @param ptr smart pointer ti abstract component tool
+     * @return pointer-like object to component pool of type T
+     */
+    template<typename T>
+    static constexpr auto cast_to_component_pool_ptr(const PoolSmartPtr &ptr) {
+        return static_cast<ComponentPoolPtr<T> >(ptr.get());
+    }
+
+    ///allocates new pool
+    /**
+     * @return PoolSmartPtr with new pool
+     */
+    template<typename T>
+    static constexpr PoolSmartPtr create_pool() {
+        return make_unique<ComponentPool<T> >();
+    }   
+
+    ///Component data reference (contains reference to data or empty)
+    /** Useful if we need to hold a lock during holding this reference */
+    template<typename T>
+    using Ref = OptionalRef<T>;
+
+    ///Creates ref from data and pointer to component where data are located
+    /**
+     * @param data reference to a data
+     * @param ptr pointer to component pool which holds data
+     * @return ref object
+     */
+    template<typename T>
+    static constexpr Ref<T> create_ref(T &data, [[maybe_unused]] const ComponentPoolPtr<T> &ptr) {
+        return Ref<T>(data);
+    }
+    ///Create empty ref object
+    template<typename T>
+    static constexpr Ref<T> create_ref() {
+        return Ref<T>(std::nullopt);
+    }
+    
+};
+
+struct ConceptTestComponent {};
+
 template<typename T>
-concept ConstComponentVisitor = std::is_invocable_v<T, ConstAnyRef>
-    || std::is_invocable_v<T, ConstAnyRef, ComponentTypeID>
-    || std::is_invocable_v<T, ConstAnyRef, ComponentTypeID, ComponentTypeID>;
+concept RegistryTraits = requires {    
+    typename T::PoolSmartPtr;
+    typename T::template ComponentNormalized<ConceptTestComponent>;
+    typename T::template ComponentPool<ConceptTestComponent>;
+    typename T::template ComponentPoolPtr<ConceptTestComponent>;
+    typename T::template Ref<ConceptTestComponent>;
+    typename T::template RegistryStorage<int, typename T::PoolSmartPtr>;
+    requires IsPointerLike<typename T::template ComponentPoolPtr<ConceptTestComponent> >;
+    requires IsPointerLike<typename T::template ComponentPoolPtr<const ConceptTestComponent> >;
+    
+    {T::template cast_to_component_pool_ptr<ConceptTestComponent>(std::declval<const typename T::PoolSmartPtr &>())} 
+            -> std::same_as<typename T::template ComponentPoolPtr<ConceptTestComponent> >;
+    {T::template create_pool<ConceptTestComponent>()} -> std::same_as<typename T::PoolSmartPtr>;
+    {T::template component_type_id<ConceptTestComponent>} -> std::convertible_to<ComponentTypeID>;
+    {T::template create_ref<ConceptTestComponent>(std::declval<ConceptTestComponent &>(), std::declval<typename T::template ComponentPoolPtr<ConceptTestComponent> >())} 
+            -> std::same_as<typename T::template Ref<ConceptTestComponent> >;
+    {T::template create_ref<ConceptTestComponent>()} -> std::same_as<typename T::template Ref<ConceptTestComponent> >;
+    
+};
+
+static_assert(RegistryTraits<DefaultRegistryTraits>);
 
 
-    ///Generic registry class template
+
+
+///GenericRegistry class template
 /**
  * GenericRegistry is the main class template of the ECS database.
  * It manages entities and their associated components.
@@ -60,9 +163,16 @@ concept ConstComponentVisitor = std::is_invocable_v<T, ConstAnyRef>
  */
 
  
-template<template<class> class PoolType, template<class,class> class Storage >
+template<typename Traits = DefaultRegistryTraits>
 class GenericRegistry {
 public:
+
+    template<typename T> using Ref = typename Traits::template Ref<T>;
+
+    template<typename T> 
+    using PoolType = typename Traits::template ComponentPool<T>;
+    template<typename T> 
+    using PoolPtr = typename Traits::template ComponentPoolPtr<T>;
 
     constexpr GenericRegistry() = default;
 
@@ -84,6 +194,9 @@ public:
 
     ///Type of component pool pointer
     using PPool = unique_ptr<IComponentPool>;
+
+    using Storage = typename Traits::template RegistryStorage<Key, PPool>;
+
 
     ///Create a new entity
     static constexpr Entity create_entity() {
@@ -132,11 +245,11 @@ public:
      * @tparam T Type of the component to be removed
      * @param e Entity to which the component is to be added or updated
      * @param data Data of the component to be set
-     * @return Reference to the component data stored in the registry
-     * This overload uses default component variant ID (0).
+     *  @retval true component has been created
+     *  @retval false component has been replaced
      */
     template<typename T>
-    constexpr T & set(Entity e, T data) {
+    constexpr bool set(Entity e, T data) {
         return emplace<T, ComponentTypeID, T>(e, ComponentTypeID(), std::move(data));
     }
 
@@ -147,10 +260,11 @@ public:
      * @param e Entity to which the component is to be added or updated
      * @param variant_id component variant ID to differentiate multiple components of the same type
      * @param data Data of the component to be set
-     * @return Reference to the component data stored in the registry
+     *  @retval true component has been created
+     *  @retval false component has been replaced
      */
     template<typename T>
-    constexpr T & set(Entity e, ComponentTypeID variant_id, T data) {
+    constexpr bool set(Entity e, ComponentTypeID variant_id, T data) {
         return emplace<T, ComponentTypeID &, T>(e, variant_id, std::move(data));
     }
 
@@ -163,29 +277,30 @@ public:
      *          If not provided, default component variant ID (0) is used. In this case, 
      *          Arg0 is treated as the first argument for component construction.
      *  @param args Arguments for constructing the component
-     *  @return Reference to the component data stored in the registry
-     * This overload uses default component variant ID (0) if variant_id is not provided.
+     *  @retval true component has been created
+     *  @retval false component has been replaced
      */
     template<typename T, typename Arg0, typename ... Args>
-    constexpr T &emplace(Entity e, Arg0 &&variant_id, Args && ... args) {
+    constexpr bool emplace(Entity e, Arg0 &&variant_id, Args && ... args) {
         if constexpr(std::is_same_v<std::decay_t<Arg0>, ComponentTypeID>) {
-            PoolType<T> *p = create_component_if_needed<T>(variant_id);
+            auto p = create_component_if_needed<T>(variant_id);
             auto r = p->try_emplace(e, std::forward<Args>(args)...);
             if (!r.second) {
-                if constexpr(is_droppable<T>) {
+                if constexpr(is_droppable<decltype(r.first->second)>) {
                     drop(r.first->second);
                 }
                 std::destroy_at(std::addressof(r.first->second));
                 std::construct_at(std::addressof(r.first->second), std::forward<Args>(args)...);
+                return false;
             }
-            return r.first->second;        
+            return true;
         } else {
             return emplace(e, ComponentTypeID{}, std::forward<Arg0>(variant_id), std::forward<Args>(args)...);
         }
     }
 
     ///Add a component for an entity with default component variant ID (0)
-    /** @tparam T Type of the component to be added
+    /** @tparam T Type of the component to be added. Extra qualifiers are removed.
      *  @param e Entity to which the component is to be added
      *  @return Reference to the component data stored in the registry
      * This overload uses default component variant ID (0).
@@ -203,166 +318,35 @@ public:
         return r.first->second;        
     }
 
-
-    ///Remove a component of type T from an entity (if it exists)
-    /** @tparam T Type of the component to be removed
-     *  @param e Entity from which the component is to be removed
-     * This overload uses default component variant ID (0).
-     */
-    template<typename T>
-    constexpr void remove(Entity e) {
-        remove<T>(e, {});
-    }
-
     ///Remove a component of type T with specific component variant ID from an entity (if it exists)
-    /** @tparam T Type of the component to be removed
+    /** @tparam T Type of the component to be removed. Note extra qualifiers are removed.
      *  @param e Entity from which the component is to be removed
      *  @param variant_id component variant ID to differentiate multiple components of the same type
      */
     template<typename T>
-    constexpr void remove(Entity e, ComponentTypeID variant_id) {
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
+    constexpr void remove(Entity e, ComponentTypeID variant_id = {}) {
+        auto iter = _storage.find(Key{Traits::template component_type_id<T>, variant_id});
         if (iter == _storage.end()) return;
         iter->second->erase(e);
     }
 
-
-    ///Get a const reference to a component of type T with specific component variant ID for an entity (if it exists)
-    /**
-     * @tparam T Type of the component to be retrieved
-     * @param e Entity whose component is to be retrieved   
-     * @param variant_id component variant ID to differentiate multiple components of the same type
-     * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
-     */
-    template<typename T>
-    constexpr auto get(Entity e, ComponentTypeID variant_id) const {
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        using RetT = OptionalRef<std::remove_reference_t<decltype(std::declval<const PoolType<T> *>()->begin()->second)> >;
-        if (iter == _storage.end()) return RetT(std::nullopt);
-        auto pp = static_cast<const PoolType<T> *>(iter->second.get());
-        auto iter2 = pp->find(e);
-        if (iter2 == pp->end()) return RetT(std::nullopt);
-        return RetT{iter2->second};
-    }
-
-        ///Get a const reference to a component of type T for an entity (if it exists)
-    /**
-     * @tparam T Type of the component to be retrieved
-     * @param e Entity whose component is to be retrieved
-     * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
-     * This overload uses default component variant ID (0).
-     */
-    template<typename T>
-    constexpr auto get(Entity e) const {
-        return get<T>(e, {});
-    }
-
-
     ///Get a reference to a component of type T with specific component variant ID for an entity (if it exists)
     /** @tparam T Type of the component to be retrieved
-     *  @param e Entity whose component is to be retrieved   
-     *  @param variant_id component variant ID to differentiate multiple components of the same type
-     *  @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
-     */
-    template<typename T>
-    constexpr auto get(Entity e, ComponentTypeID variant_id) {
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        using RetT = OptionalRef<std::remove_reference_t<decltype(std::declval<PoolType<T> *>()->begin()->second)> >;
-        if (iter == _storage.end()) return RetT(std::nullopt);;
-        auto pp = static_cast<PoolType<T> *>(iter->second.get());
-        auto iter2 = pp->find(e);
-        if (iter2 == pp->end()) return RetT(std::nullopt);;
-        return RetT{iter2->second};
-
-    }
-
-        ///Get a reference to a component of type T for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
      * @param e Entity whose component is to be retrieved
-     * @return OptionalRef to the component data if it exists, empty OptionalRef otherwise
-     * This overload uses default component variant ID (0).
+     * @param variant_id component variant ID to differentiate multiple components of the same type
+     * @return Ref to the component data if it exists, empty Ref otherwise
+     * @note Even if this function is const, it can return a non-const reference to the component data.
+     * If you need a const reference, specify const T as the template parameter.
      */
     template<typename T>
-    constexpr auto get(Entity e) {
-        return get(e, {});
+    constexpr Ref<T> get(Entity e, ComponentTypeID variant_id = {}) const {
+        auto iter = _storage.find(Key{Traits::template component_type_id<T>, variant_id});
+        if (iter == _storage.end()) return Ref<T>(std::nullopt);
+        auto pp = Traits::template cast_to_component_pool_ptr<T>(iter->second);
+        auto iter2 = pp->find(e);   
+        if (iter2 == pp->end()) return Traits::template create_ref<T>();
+        return Traits::template create_ref<T>(iter2->second, pp);       
     }
-
-    ///Find component of type T with specific component variant ID for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
-     *  @param e Entity whose component is to be retrieved   
-     *  @param variant_id component variant ID to differentiate multiple components of the same type
-     *  @return Iterator to the component data if it exists, end iterator otherwise
-     */
-    template<typename T>
-    constexpr auto find(Entity e, ComponentTypeID variant_id) const {
-        using Iter = decltype(std::declval<const PoolType<T> >().begin());
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return Iter();
-        auto pp = static_cast<const PoolType<T> *>(iter->second.get());
-        return pp->find(e);
-    }
-
-    ///Find component of type T for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
-     *  @param e Entity whose component is to be retrieved   
-     *  @return Iterator to the component data if it exists, end iterator otherwise
-     *  This overload uses default component variant ID (0).
-     */
-    template<typename T>
-    constexpr auto find(Entity e) const {
-        return get(e, {});
-    }
-
-        ///Find component of type T with specific component variant ID for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
-     *  @param e Entity whose component is to be retrieved   
-     *  @param variant_id component variant ID to differentiate multiple components of the same type
-     *  @return Iterator to the component data if it exists, end iterator otherwise
-     */
-    template<typename T>
-    constexpr auto find(Entity e, ComponentTypeID variant_id) {
-        using Iter = decltype(std::declval< PoolType<T> >().begin());
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return Iter();
-        auto pp = static_cast<PoolType<T> *>(iter->second.get());
-        return pp->find(e);
-    }
-
-    ///Find component of type T for an entity (if it exists)
-    /** @tparam T Type of the component to be retrieved
-     *  @param e Entity whose component is to be retrieved   
-     *  @return Iterator to the component data if it exists, end iterator otherwise
-     *  This overload uses default component variant ID (0).
-     */
-    template<typename T>
-    constexpr auto find(Entity e)  {
-        return get(e, {});
-    }
-
-
-    ///Get all components of type T with specific component variant ID (non-const version)
-    /** @tparam T Type of the component to be retrieved
-     *  @param variant_id component variant ID to differentiate multiple components of the same type
-     *  @return Range of all components of type T with the given component variant ID   
-     */
-    template<typename T>    
-    constexpr auto all_of(ComponentTypeID variant_id) {
-        using Iter = decltype(std::declval<PoolType<T> >().begin());
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return std::ranges::subrange<Iter,Iter>(Iter{}, Iter{});
-        PoolType<T> *p = static_cast<PoolType<T> *>(iter->second.get());
-        return std::ranges::subrange<Iter, Iter>(p->begin(), p->end());        
-    }
-
-    ///Get all components of type T (non-const version)
-    /** @tparam T Type of the component to be retrieved
-     *  @return Range of all components of type T with the default component variant ID (0)   
-     */
-    template<typename T>
-    constexpr auto all_of() {
-        return all_of<T>({});
-    }
-
 
     ///Get all components of type T with specific component variant ID (const version)
     /** @tparam T Type of the component to be retrieved
@@ -370,30 +354,11 @@ public:
      *  @return Range of all components of type T with the given component variant ID   
      */
     template<typename T>
-    constexpr auto all_of(ComponentTypeID variant_id) const {
-        using Iter = decltype(std::declval<const PoolType<T> >().begin());
-        auto iter = _storage.find(Key{component_type_id<T>, variant_id});
-        if (iter == _storage.end()) return std::ranges::subrange(Iter{}, Iter{});
-        const PoolType<T> *p = static_cast<const PoolType<T> *>(iter->second.get());
-        return std::ranges::subrange(p->begin(), p->end());
-    }
-
-    ///Get all components of type T (const version)
-    /** @tparam T Type of the component to be retrieved
-     *  @return Range of all components of type T with the default component variant ID (0)   
-     */
-    template<typename T>
-    constexpr auto all_of() const {
-        return all_of<T>({});
-
-    }
-
-    ///Remove all components of type T 
-    /** @tparam T Type of the component to be removed
-     */
-    template<typename T>
-    constexpr void remove_all_of() {
-        _storage.erase(Key{component_type_id<T>, {}});
+    constexpr auto all_of(ComponentTypeID variant_id = {}) const {
+        typename Traits::template ComponentPoolPtr<T> p = {};
+        auto iter = _storage.find(Key{Traits::template component_type_id<T>, variant_id});
+        if (iter != _storage.end()) p = Traits::template cast_to_component_pool_ptr<T>(iter->second);
+        return std::ranges::subrange(safe_begin(p), safe_end(p));
     }
 
     ///Remove all components of type T 
@@ -401,40 +366,8 @@ public:
      *  @param variant_id component variant ID to differentiate multiple components of the same type
      */
     template<typename T>
-    constexpr void remove_all_of(ComponentTypeID variant_id) {
-        _storage.erase(Key{component_type_id<T>, variant_id});
-    }
-
-    /// Iterate over all components of an entity and invoke a visitor function for each component (non-const version)
-    /** @tparam Fn Type of the visitor function
-     *  @param e Entity whose components are to be visited
-     *  @param fn Visitor function to be invoked for each component
-     * The visitor function can have one of the following signatures:
-     * - void(AnyRef)
-     * - void(AnyRef, ComponentTypeID)
-     * - void(AnyRef, ComponentTypeID, ComponentTypeID)
-     * where the parameters are:
-     * - AnyRef: reference to the component data
-     * - ComponentTypeID: component variant ID
-     * - ComponentTypeID: type-component ID 
-     * The function is invoked for each component of the entity.
-     */ 
-    template<ComponentVisitor Fn>
-    void for_each_component(Entity e, Fn &&fn) {
-        for (const auto &[k, v]: _storage) {
-            IComponentPool *p = v.get();
-            AnyRef c = p->entity(e);
-            if (c) {
-                if constexpr(std::is_invocable_v<Fn, AnyRef>) {
-                    fn(c);
-                } else if constexpr(std::is_invocable_v<Fn, AnyRef, ComponentTypeID>) {
-                    fn(c,k._variant_id);
-                } else {
-                    static_assert(std::is_invocable_v<Fn, AnyRef, ComponentTypeID, ComponentTypeID>);
-                    fn(c,k._variant_id, k._type_id);
-                }                    
-            }
-        }
+    constexpr void remove_all_of(ComponentTypeID variant_id = {}) {
+        _storage.erase(Key{Traits::template component_type_id<T>, variant_id});
     }
 
     /// Iterate over all components of an entity and invoke a visitor function for each component (const version)
@@ -451,10 +384,10 @@ public:
      * - ComponentTypeID: type-component ID
      * The function is invoked for each component of the entity.
      */
-    template<ConstComponentVisitor Fn>
+    template<ComponentVisitor Fn>
     auto for_each_component(Entity e, Fn &&fn) const {
         for (const auto &[k, v]: _storage) {
-            ConstAnyRef c = v->entity(e);
+            AnyRef c = v->entity(e);
             if (c) {
                 if constexpr(std::is_invocable_v<Fn, AnyRef>) {
                     fn(c);
@@ -470,33 +403,48 @@ public:
     }
 
     ///Create a view for iterating over entities with specific components
-    /** @tparam Components Types of components to be included in the view
-     *  @param ids Optional list of component variant IDriants to include in the view. If empty, default component variant ID (0) is used for all components.
+    /** @tparam Components Types of components to be included in the view. You can use
+     * qualifier const to indicate read-only components.
+     *  @param ids Optional list of component variant IDs to include in the view.
+     *  If empty, default component variant ID (0) is used for all components.
      *  @return View object for iterating over entities with the specified components
      * The view can be used in range-based for loops and other range algorithms. The view is compatible with the C++20 ranges library.
      * Each element of the view is a tuple containing the entity and references to the requested components.
-     * 
-     * 
      */
     template<typename ... Components>
-    constexpr View<GenericRegistry *, Components...> view(std::initializer_list<ComponentTypeID> ids = {}) {
-        return View<GenericRegistry *, Components...>(this,ids);
+    constexpr auto view(std::span<const ComponentTypeID> ids) const {
+        std::array<ComponentTypeID, sizeof...(Components)> idsarr;
+        auto itr = ids.begin();
+        for (auto  &x: idsarr) {
+            if (itr == ids.end()) x = {};
+            else {
+                x = *itr;
+                ++itr;
+            }
+        }
+        using Pools = std::tuple<typename Traits::template ComponentPoolPtr<Components> ...>;
+        Pools pools;
+
+        using ComponentTuple = std::tuple<Components ...>;
+
+        sequence_iterate<sizeof...(Components)>([&](auto idx){
+            using T = std::tuple_element_t<idx, ComponentTuple>;
+            auto f = _storage.find(Key{Traits::template component_type_id<T>, idsarr[idx]});
+            if (f == _storage.end()) {
+                std::get<idx>(pools) = nullptr;
+            } else {
+                std::get<idx>(pools) = Traits::template cast_to_component_pool_ptr<T>(f->second);
+            }
+        });
+
+        return View<Pools>(pools);
     }
 
     template<typename ... Components>
-    constexpr View<GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) {
-        return View<GenericRegistry *, Components...>(this,ids);
+    constexpr auto view(std::initializer_list<ComponentTypeID> ids = {}) const {
+        return view<Components...>(std::span<const ComponentTypeID>(ids));
     }
-    template<typename ... Components>
-    constexpr View<const GenericRegistry *, Components...> view(std::initializer_list<ComponentTypeID> ids = {}) const {
-        return View<const GenericRegistry *, Components...>(this,ids);
-    }
-
-    template<typename ... Components>
-    constexpr View<const GenericRegistry *, Components...> view(std::span<const ComponentTypeID> ids) const {
-        return View<const GenericRegistry *, Components...>(this,ids);
-    }
-
+    
 
     ///Check whether an entity has a component of type T with specific component variant ID
     /** @tparam Component Type of the component to be checked
@@ -561,12 +509,11 @@ public:
      * @param variant component variant
      * @param predicate instance of preficate function 
      */
-    template<typename Component, std::invocable<Entity, Component>  Fn>
+    template<typename T, std::invocable<Entity, typename Traits::template ComponentNormalized<T> >  Fn>
     constexpr bool group_entities(ComponentTypeID variant, Fn &&predicate) {
-        auto mitr = _storage.find(Key{component_type_id<Component>, variant});
+        auto mitr = _storage.find(Key{Traits::template component_type_id<T>, variant});
         if (mitr == _storage.end() ) return false;
-        auto c = mitr->second.get();
-        PoolType<Component> *ct = static_cast<PoolType<Component> *>(c);
+        auto ct = Traits::template cast_to_component_pool_ptr<T>(mitr->second);
 
         auto b = ct->begin();
         auto e = ct->end();
@@ -586,7 +533,9 @@ public:
         });
         std::sort(sortMap.begin(), sortMap.end());
 
-        auto new_pool = alloc_component<Component>();
+        auto new_pool_ptr = Traits::template create_pool<T>();
+        auto new_pool = Traits::template cast_to_component_pool_ptr<T>(new_pool_ptr);
+
         new_pool->reserve(std::distance(b, e));
         std::for_each(b, st, [&](auto &&itm){
             new_pool->emplace(std::move(itm.first), std::move(itm.second));
@@ -601,7 +550,7 @@ public:
                 new_pool->emplace(std::move(itm.first), std::move(itm.second));
             }
         });
-        mitr->second = std::move(new_pool);
+        mitr->second = std::move(new_pool_ptr);
         return true;
     }   
 
@@ -658,35 +607,44 @@ public:
         return {};
     }
 
+    ///creates component pool if needed
+    /** @tparam Component Type of the component whose pool is to be created. This must be pure type,
+     * qualifiers like const and reference are not allowed.
+     *  @param variant component variant ID to differentiate multiple components of the same type
+     *  @return Pointer to the component pool if created or already exists, nullptr otherwise
+     */
     template<typename Component>
-    PoolType<Component> *get_component_pool(ComponentTypeID variant = {}, bool create = false) {
-        if (create) {
-            return create_component_if_needed<Component>(variant);
-        } else {
-            auto r = _storage.find(Key{component_type_id<Component>, variant});
-            if (r == _storage.end()) return nullptr;
-            return static_cast<PoolType<Component> *>(r->second.get());
-        }
+    PoolType<Component> *create_component_pool(ComponentTypeID variant = {}) {
+        return create_component_if_needed<Component>(variant);
     }
 
+    ///gets component pool if exists
+    /** @tparam Component Type of the component whose pool is to be retrieved. This must be pure type,
+     * qualifiers like const and reference are not allowed.
+     *  @param variant component variant ID to differentiate multiple components of the same type
+     *  @return Pointer to the component pool if exists, nullptr otherwise
+     */
     template<typename Component>
-    const PoolType<Component> *get_component_pool(ComponentTypeID variant = {}) const {
-        auto r = _storage.find(Key{component_type_id<Component>, variant});
+     PoolType<Component> *get_component_pool(ComponentTypeID variant = {}) const {
+        auto r = _storage.find(Key{Traits::template component_type_id<Component>, variant});
         if (r == _storage.end()) return nullptr;
-        return static_cast<PoolType<Component> *>(r->second.get());
+        return Traits::template cast_to_component_pool_ptr<Component>(r->second);
     }
 
 protected:
-    Storage<Key, PPool> _storage;
+    Storage _storage;
 
     template<typename T>
-    constexpr PoolType<T> *create_component_if_needed(ComponentTypeID sub) {
-        Key k{component_type_id<T>, sub};
+    constexpr PoolPtr<T> create_component_if_needed(ComponentTypeID sub) {
+        static_assert(!std::is_const_v<T> && !std::is_reference_v<T>,
+        "Component type must be pure type without const or reference qualifiers");
+
+        Key k{Traits::template component_type_id<T>, sub};
         auto iter = _storage.find(k);
         if (iter == _storage.end()) {
-            return  static_cast<PoolType<T> *>(_storage.try_emplace(k, alloc_component<T>()).first->second.get());
+            return Traits::template cast_to_component_pool_ptr<T>(_storage.try_emplace(k, Traits::template create_pool<T>()).first->second);
         } else {
-            return static_cast<PoolType<T> *>(iter->second.get());
+            return Traits::template cast_to_component_pool_ptr<T>(iter->second);
         }
 
     }
@@ -731,10 +689,6 @@ protected:
 
     }
 
-    template<typename X>
-    constexpr unique_ptr<PoolType<X> > alloc_component() {
-        return  unique_ptr<PoolType<X> >(new  PoolType<X>);
-    }
 
 };
 
