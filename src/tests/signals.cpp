@@ -201,8 +201,34 @@ int test_async_1() {
 
 }
 
+
+int test_async_2() {
+    auto disp = AsyncSignalDispatcher<0>::create();
+    auto slot = SharedSignalSlot<void(int), AsyncSignalDispatcher<0> >::create(disp);
+
+    std::promise<int> res;
+    auto fut =res.get_future();
+
+
+    auto con = slot >> [&](int k) noexcept {res.set_value(k);};
+
+    slot(42);
+
+    auto wr = fut.wait_for(std::chrono::seconds(0));
+    
+    CHECK(wr == std::future_status::timeout);
+
+    disp.pump_one();
+
+    int r = fut.get();
+    CHECK_EQUAL(r, 42);
+ 
+    return 0;
+
+}
+
 int main() {
     return test1() + test2() + test3() 
         + test4() + test5() + test6()
-        + test_async_1();
+        + test_async_1() + test_async_2();
 }

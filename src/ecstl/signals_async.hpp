@@ -12,13 +12,15 @@ namespace ecstl {
     ///Asynchronous signal dispatcher 
     /**
      * @tparam _n_threads count of threads in the thread pool. This value must not be zero
-     * Instance of this class can be shared. You need to use create() to create actual instance
+     * Instance of this class can be shared. You need to use create() to create actual instance.
+     * This argument can be zero if you need to manually process waiting tasks
+     * 
+     * 
      */
     template<unsigned int _n_threads = 1>
     class AsyncSignalDispatcher {
     public:
 
-        static_assert(_n_threads>0);
 
         using Task = SignalConsumer<void()>;
         using PTask = std::unique_ptr<Task>;
@@ -65,7 +67,6 @@ namespace ecstl {
                 }, std::move(args));
             });
         }
-
 
     protected:
 
@@ -128,6 +129,95 @@ namespace ecstl {
 
     };
 
+
+    template<>
+    class AsyncSignalDispatcher<0> {
+    public:
+
+
+        using Task = SignalConsumer<void()>;
+        using PTask = std::unique_ptr<Task>;
+
+        ///dispatch a task
+        /**
+         * Execute task in thread pool. 
+         * 
+         * @param fn function noexcept and with no arguments invocable
+         * 
+         * The function is queued to be executed in thread pool. If there is idle thread, the
+         * function is immediatelly executed
+         */
+        template<typename Fn>
+        requires(std::is_nothrow_invocable_v<Fn>)
+        void dispatch(Fn &&fn) {
+            std::lock_guard _(_core->_mx);
+            _core->_queue.push(std::make_unique<FunctorSignalConsumer<Fn, void()> >(std::forward<Fn>(fn)));            
+        }
+
+        ///Create dispatcher
+        static AsyncSignalDispatcher create() {
+            auto c = std::make_shared<DispCore>();
+            return AsyncSignalDispatcher(std::move(c));
+        }
+
+        ///Dispatches function call (with arguments)
+        /**
+         * @param fn a smart pointer to function to call - for compatibility with signal slots
+         * @param args arguments
+         * 
+         * The function creates and dispatches task which contains the function itself and 
+         * arguments
+         * 
+         */
+        template<typename Fn, typename ... Args>        
+        requires(std::is_nothrow_invocable_v<decltype(*std::declval<Fn>()), Args...>)
+        constexpr void operator()(Fn &&fn, Args && ... args)  {
+            dispatch([fn = std::move(fn), args = std::make_tuple(std::forward<Args>(args)...)]() mutable noexcept {
+                std::apply([&](auto && ... args){
+                    (*fn)(std::forward<Args>(args)...);
+                }, std::move(args));
+            });
+        }
+
+        ///Manually run enqueued task
+        /**
+         * Allows manual synchronous dispatching
+         * 
+         * @retval true a task has been processed
+         * @retval false no more tasks
+         */
+        bool pump_one() {
+            return _core->run_enqueued_task();
+        }
+        void pump_all() {
+            while (pump_one());
+        }
+
+
+    protected:
+
+
+        struct DispCore {
+            std::mutex _mx;
+            std::queue<PTask> _queue;
+
+            bool run_enqueued_task() {
+                std::unique_lock lk(_mx);
+                if (_queue.empty()) return false;
+                PTask t = std::move(_queue.front());
+                if (!t) return false;
+                _queue.pop();
+                lk.unlock();
+                t->operator()();
+                return true;
+            }
+        };
+
+        AsyncSignalDispatcher(std::shared_ptr<DispCore> core) :_core(std::move(core)) {}
+
+        std::shared_ptr<DispCore> _core;
+
+    };
 
     
 

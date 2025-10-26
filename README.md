@@ -134,6 +134,22 @@ struct ComponentWithDrop {
     void drop() {delete [] data;}  //- called when component is removed, replaced or when registry is destroyed
 }
 ```
+
+## Signals
+
+Communication between parts of the system that operate on different components is important. To support this, the library provides a convenience class implementing a signal–slot mechanism.
+
+The headers `signals.hpp` and `signals_async.hpp` allow adding `SignalSlot<fn>` or `SharedSignalSlot<fn>` to your project. In async mode you can use `SignalSlot<fn, AsyncSignalDispatcher>`.
+
+```cpp
+SignalSlot<void(int)> slot;
+auto con = connect(slot, [&](int v){ /*... some code...*/});
+
+slot(42); //broadcast signal
+```
+Signal slots can be allocated statically, globally, or inside class instances. It is not recommended to place signal slots inside components. An asynchronous signal slot allows handlers to run in parallel using a thread pool, or — without a pool — to defer processing of all handlers until a later, convenient time (using AsyncSignalDispatcher<0>).
+
+
 ## Notes
 
 ### Qualifiers and non-const access to components in a const registry
