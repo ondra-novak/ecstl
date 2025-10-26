@@ -8,3 +8,6 @@ add_executable(deleter_test deleter_test.c)
 target_link_libraries(deleter_test ecsc)
 add_executable(view_test view.c)
 target_link_libraries(view_test ecsc)
+
+
+add_executable(signals signals.cpp)

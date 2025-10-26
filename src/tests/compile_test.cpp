@@ -1,4 +1,6 @@
 #include "../ecstl/ecstl.hpp"
+#include "../ecstl/registry_shrptr.hpp"
+#include "../ecstl/signals.hpp"
 #include <functional>
 #include <iostream>
 #include <ranges>
