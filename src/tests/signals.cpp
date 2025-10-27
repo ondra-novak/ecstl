@@ -201,6 +201,35 @@ int test_async_1() {
 
 }
 
+int test7() {
+    int a = 0;
+    int b = 0;
+    auto slot1 = SharedSignalSlot<void(int)>::create();    
+    auto con1 = connect(slot1, [&](int v) noexcept {
+        a = v;
+    },0,ConnectionState::one_shot);
+    auto con2 = connect(slot1, [&](int v) noexcept {
+        b = v;
+    },0, ConnectionState::enabled);
+
+    slot1(10);
+    CHECK_EQUAL(a,10);
+    CHECK_EQUAL(b,10);
+
+    slot1(20);
+    CHECK_EQUAL(a,10);
+    CHECK_EQUAL(b,20);
+
+    set_enable(slot1, con1, ConnectionState::one_shot);
+
+    slot1(30);
+    CHECK_EQUAL(a,30);
+    CHECK_EQUAL(b,30);
+
+    return 0;
+
+}
+
 
 int test_async_2() {
     auto disp = AsyncSignalDispatcher<0>::create();
@@ -229,6 +258,6 @@ int test_async_2() {
 
 int main() {
     return test1() + test2() + test3() 
-        + test4() + test5() + test6()
+        + test4() + test5() + test6() + test7()
         + test_async_1() + test_async_2();
 }

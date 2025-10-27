@@ -66,7 +66,7 @@ namespace ecstl {
      * SignalSlot<void(std::string), AsyncSignalDispatcher> slot2;
      * @endcode
      */
-    template<typename Prototype, typename Dispatcher = SyncSignalDispatcher>
+    template<typename Prototype, typename Dispatcher = SyncSignalDispatcher, typename Lock = std::mutex>
     class SignalSlot;
 
 
@@ -88,7 +88,7 @@ namespace ecstl {
      * 
      * @see SignalSlot
      */
-    template<typename Prototype, typename Dispatcher = SyncSignalDispatcher>
+    template<typename Prototype, typename Dispatcher = SyncSignalDispatcher, typename Lock = std::mutex>
     class SharedSignalSlot;
    
     template<typename T>
@@ -96,9 +96,26 @@ namespace ecstl {
         {T::create()}->std::same_as<T>;
     };
 
+    enum class ConnectionState : unsigned char {
+            ///Connection is disabled
+            /**
+             * Connection is registered but disabled, it doesn't receives signals. You can reenable connection later
+             */
+            disabled,
+            ///Connection is enabled
+            enabled,
+            ///Connection is in one-shot mode
+            /**
+             * Connection is enabled, but once signal is sent, connection is automatically disabled, this is garanteed to
+             * be atomic operation. You can reenable the connection any time later
+             */
+            one_shot
+    };
 
-    template<typename Dispatcher, typename ... Args>
-    class SignalSlot<void(Args...), Dispatcher> {
+
+
+    template<typename Dispatcher, typename Lock, typename ... Args>
+    class SignalSlot<void(Args...), Dispatcher, Lock> {
     public:
         ///Abstract consumer
         using Consumer = SignalConsumer<void(Args...)>;
@@ -111,7 +128,14 @@ namespace ecstl {
          * and you need to reset all shared instances to perform full disconnect
          */
         using Connection = std::shared_ptr<Consumer>;
-        using PriorityRefPair = std::pair<int, std::weak_ptr<Consumer> >;
+
+        struct ConsumerReg {
+            int priority;
+            ConnectionState state;
+            std::weak_ptr<Consumer> consumer;
+        };
+
+
         union TmpReference {
             Connection con;
             TmpReference() {}
@@ -140,6 +164,7 @@ namespace ecstl {
          * @param fn function compatible with slot's prototype. NOTE: The function must be noexcept
          * @param priority specifies priority. Consumers are ordered from high priority (high number), to
          * low priority(low number). If you ignore priority, consumers are called in order of connection
+         * @param initial_state specifies initial state of connection. It can be either enabled, disabled or one-shot mode
          * @return Connection object. To keep connection active, you need to hold Connection object somewhere. Once
          * this object is destroyed, the connection is disconnected. 
          * 
@@ -150,10 +175,10 @@ namespace ecstl {
          */
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
-        friend Connection connect(SignalSlot &slot, Fn &&fn, int priority = 0) {
+        friend Connection connect(SignalSlot &slot, Fn &&fn, int priority = 0, ConnectionState initial_state = ConnectionState::enabled) {
             return connect(slot, 
                 std::make_shared<FunctorSignalConsumer<std::remove_cvref_t<Fn>, void(Args...)> >(std::forward<Fn>(fn)),
-                priority
+                priority, initial_state
             );
         }
 
@@ -179,10 +204,10 @@ namespace ecstl {
          * @return conn instance
          * 
          */
-        friend Connection connect(SignalSlot &slot, const Connection &conn, int priority) {
+        friend Connection connect(SignalSlot &slot, const Connection &conn, int priority =0, ConnectionState initial_state = ConnectionState::enabled) {
             std::lock_guard _(slot._mx);
-            auto iter = std::upper_bound(slot._consumers.begin(), slot._consumers.end(), PriorityRefPair(priority, {}), priority_order);            
-            slot._consumers.insert(iter, PriorityRefPair(priority, conn));
+            auto iter = std::upper_bound(slot._consumers.begin(), slot._consumers.end(), ConsumerReg(priority, {}, {}), priority_order);            
+            slot._consumers.insert(iter, ConsumerReg(priority, initial_state,  conn));
             return conn;
         }
 
@@ -201,15 +226,30 @@ namespace ecstl {
          * doesn't affect connections to other signal slots
          */
         friend void disconnect(SignalSlot &slot, const Connection &con) {
-            std::unique_lock lk(slot._mx);
-            auto e = std::remove_if(slot._consumers.begin(), slot._consumers.end(), [&](const auto &c){
-                Consumer cc = c.second.lock();
+            std::lock_guard _(slot._mx);
+            auto e = std::remove_if(slot._consumers.begin(), slot._consumers.end(), [&](const ConsumerReg &c){
+                Consumer cc = c.consumer.lock();
                 return !cc || cc == con;
             });
             slot._consumers.erase(e, slot._consumers.end());
 
         }
 
+        ///Enables or disables or specifies operation mode of a connection
+        /**
+         * @param slot reference to signal sloy
+         * @param con connection identifier
+         * @param state new state, default is enabled
+         */
+        friend void set_enable(SignalSlot &slot, const Connection &con, ConnectionState state = ConnectionState::enabled) {
+            std::lock_guard _(slot._mx);
+            auto iter = std::find_if(slot._consumers.begin(), slot._consumers.end(), [&](const ConsumerReg &c){
+                return c.consumer.lock() == con;
+            });
+            if (iter != slot._consumers.end()) {
+                iter->state = state;
+            }
+        }
 
         ///Send signal
         /**
@@ -222,16 +262,12 @@ namespace ecstl {
             SignalScratchpad &sp = SignalScratchpad::get_instance();
             //retrieve current position in the scratchpad (could be non-zero)
             std::size_t sp_pos = sp._lst.size();
-            //lock this instance
-            std::unique_lock lk(_mx);
             //prepare all consumers into scratchpad
             prepare_consumers([&](Connection &&con){
                 sp._lst.push_back(con);
             });
             //mark end of scratchpad
             std::size_t sp_end = sp._lst.size();
-            //unlock - the scratchpad is TLS, so no other thread can write to it
-            lk.unlock();
             //process our content of the scratchpad and broadcast 
             for (std::size_t i =sp_pos; i != sp_end; ++i) {
                 Connection con = std::static_pointer_cast<Consumer>(sp._lst[i]);
@@ -246,8 +282,8 @@ namespace ecstl {
     private:
         
         [[no_unique_address]] Dispatcher _dispatcher = auto_create_dispatcher();
-        std::mutex _mx;
-        std::vector<PriorityRefPair> _consumers = {};
+        [[no_unique_address]] Lock _mx;
+        std::vector<ConsumerReg> _consumers = {};
 
         static Dispatcher auto_create_dispatcher() requires(create_constructible<Dispatcher>) {
             return Dispatcher::create();
@@ -262,10 +298,16 @@ namespace ecstl {
 
         template<typename Cb>
         void prepare_consumers(Cb &&cb) {
-            auto e = std::remove_if(_consumers.begin(), _consumers.end(), [&](const auto &c){
-                Connection cc = c.second.lock();
+            std::lock_guard _(_mx);
+            auto e = std::remove_if(_consumers.begin(), _consumers.end(), [&](auto &c){
+                Connection cc = c.consumer.lock();
                 if (cc) {
-                    cb(std::move(cc));
+                    if (c.state != ConnectionState::disabled) {
+                        cb(std::move(cc));
+                        if (c.state == ConnectionState::one_shot) {
+                            c.state = ConnectionState::disabled;
+                        }
+                    }
                     return false;
                 } else{
                     return true;
@@ -274,16 +316,16 @@ namespace ecstl {
             _consumers.erase(e, _consumers.end());
         }
 
-        static bool priority_order(const PriorityRefPair &a, const PriorityRefPair &b) {
-            return a.first > b.first;
+        static bool priority_order(const ConsumerReg&a, const ConsumerReg &b) {
+            return a.priority > b.priority;
         }
     };
 
     
-    template<typename Dispatcher, typename ... Args>
-    class SharedSignalSlot<void(Args...), Dispatcher> {
+    template<typename Dispatcher, typename Lock, typename ... Args>
+    class SharedSignalSlot<void(Args...), Dispatcher, Lock> {
     public:        
-        using SignalSlot = SignalSlot<void(Args...), Dispatcher>;
+        using SignalSlot = SignalSlot<void(Args...), Dispatcher, Lock>;
         using Ref = std::shared_ptr<SignalSlot>;
         using Consumer = typename SignalSlot::Consumer;
         using Connection = typename SignalSlot::Connection;
@@ -307,16 +349,20 @@ namespace ecstl {
 
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
-        friend Connection connect(SharedSignalSlot &slot, Fn &&fn, int priority = 0) {
-            return connect(*slot._sslot,std::forward<Fn>(fn), priority);
+        friend Connection connect(SharedSignalSlot &slot, Fn &&fn, int priority = 0, ConnectionState state = ConnectionState::enabled) {
+            return connect(*slot._sslot,std::forward<Fn>(fn), priority, state);
         }
 
-        friend Connection connect(SharedSignalSlot &slot, const Connection &con, int priority = 0) {
-            return connect(*slot._sslot,con, priority);
+        friend Connection connect(SharedSignalSlot &slot, const Connection &con, int priority = 0, ConnectionState state = ConnectionState::enabled) {
+            return connect(*slot._sslot,con, priority, state);
         }
 
         friend void disconnect(SharedSignalSlot &slot, const Connection &con) {
             return disconnect(*slot._sslot,con);
+        }
+
+        friend void set_enable(SharedSignalSlot &slot, const Connection &con, ConnectionState state = ConnectionState::enabled) {
+            return set_enable(*slot._sslot, con, state);
         }
 
         template<typename Fn>        
