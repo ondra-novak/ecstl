@@ -96,22 +96,12 @@ namespace ecstl {
         {T::create()}->std::same_as<T>;
     };
 
-    enum class ConnectionState : unsigned char {
-            ///Connection is disabled
-            /**
-             * Connection is registered but disabled, it doesn't receives signals. You can reenable connection later
-             */
-            disabled,
-            ///Connection is enabled
-            enabled,
-            ///Connection is in one-shot mode
-            /**
-             * Connection is enabled, but once signal is sent, connection is automatically disabled, this is garanteed to
-             * be atomic operation. You can reenable the connection any time later
-             */
-            one_shot
+    enum class ConnectionMode {
+        ///Normal connection mode, connection is active until disconnected
+        normal,
+        ///One shot connection mode, connection is disconnected once it receives signal
+        one_shot
     };
-
 
 
     template<typename Dispatcher, typename Lock, typename ... Args>
@@ -131,7 +121,7 @@ namespace ecstl {
 
         struct ConsumerReg {
             int priority;
-            ConnectionState state;
+            ConnectionMode mode;
             std::weak_ptr<Consumer> consumer;
         };
 
@@ -155,6 +145,19 @@ namespace ecstl {
          */
         explicit SignalSlot(Dispatcher disp):_dispatcher(disp) {}
 
+
+        ///Creates connection object from a callable, but doesn't connect this object
+        /**
+         * @param fn function which consumes signal sent to this connection
+         * @return Connection object. You can connect this object to signal slot later
+         */
+        template<typename Fn>        
+        requires(std::is_nothrow_invocable_v<Fn, Args...>)
+        static Connection create_connection(Fn &&fn) {
+            return std::make_shared<FunctorSignalConsumer<std::remove_cvref_t<Fn>, void(Args...)> >(std::forward<Fn>(fn));
+        }
+        
+
         ///Connect consumer to signal slot
         /** 
          * Connect consumer defined as function call to signal slot
@@ -164,7 +167,7 @@ namespace ecstl {
          * @param fn function compatible with slot's prototype. NOTE: The function must be noexcept
          * @param priority specifies priority. Consumers are ordered from high priority (high number), to
          * low priority(low number). If you ignore priority, consumers are called in order of connection
-         * @param initial_state specifies initial state of connection. It can be either enabled, disabled or one-shot mode
+         * @param mode specifies connection mode. It can be either normal or one_shot
          * @return Connection object. To keep connection active, you need to hold Connection object somewhere. Once
          * this object is destroyed, the connection is disconnected. 
          * 
@@ -175,18 +178,28 @@ namespace ecstl {
          */
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
-        friend Connection connect(SignalSlot &slot, Fn &&fn, int priority = 0, ConnectionState initial_state = ConnectionState::enabled) {
-            return connect(slot, 
-                std::make_shared<FunctorSignalConsumer<std::remove_cvref_t<Fn>, void(Args...)> >(std::forward<Fn>(fn)),
-                priority, initial_state
-            );
+        friend Connection connect(SignalSlot &slot, Fn &&fn, int priority = 0, ConnectionMode mode = ConnectionMode::normal) {
+            return connect(slot, create_connection(std::forward<Fn>(fn)),priority, mode);
         }
 
 
-        ///Connect consumer to signel slot
-        /** Shortcut to connect()
+        ///Connect consumer to signal slot
+        /** 
+         * Connect consumer defined as function call to signal slot
          * 
-         * @see connect
+         * @param slot reference to signal slot. Note that this function is actually global, not member function
+         * (you need to use connect(slot, fn)
+         * @param fn function compatible with slot's prototype. NOTE: The function must be noexcept
+         * @param priority specifies priority. Consumers are ordered from high priority (high number), to
+         * low priority(low number). If you ignore priority, consumers are called in order of connection
+         * @param mode specifies connection mode. It can be either normal or one_shot
+         * @return Connection object. To keep connection active, you need to hold Connection object somewhere. Once
+         * this object is destroyed, the connection is disconnected. 
+         * 
+         * @note Connection object can be shared. In order to disconnect the connection, you need to destroy
+         * all shared instances.
+         * 
+         * 
          */
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
@@ -201,13 +214,14 @@ namespace ecstl {
          * @param conn existing connection. You can use this function to connect existing connection
          * to just another signal slot. It just creates new connection to the same consumer
          * @param priority priority see original connect()
+         * @param mode specifies connection mode. It can be either normal or one_shot
          * @return conn instance
          * 
          */
-        friend Connection connect(SignalSlot &slot, const Connection &conn, int priority =0, ConnectionState initial_state = ConnectionState::enabled) {
+        friend Connection connect(SignalSlot &slot, const Connection &conn, int priority =0, ConnectionMode mode = ConnectionMode::normal) {
             std::lock_guard _(slot._mx);
             auto iter = std::upper_bound(slot._consumers.begin(), slot._consumers.end(), ConsumerReg(priority, {}, {}), priority_order);            
-            slot._consumers.insert(iter, ConsumerReg(priority, initial_state,  conn));
+            slot._consumers.insert(iter, ConsumerReg(priority, mode,  conn));
             return conn;
         }
 
@@ -235,21 +249,6 @@ namespace ecstl {
 
         }
 
-        ///Enables or disables or specifies operation mode of a connection
-        /**
-         * @param slot reference to signal sloy
-         * @param con connection identifier
-         * @param state new state, default is enabled
-         */
-        friend void set_enable(SignalSlot &slot, const Connection &con, ConnectionState state = ConnectionState::enabled) {
-            std::lock_guard _(slot._mx);
-            auto iter = std::find_if(slot._consumers.begin(), slot._consumers.end(), [&](const ConsumerReg &c){
-                return c.consumer.lock() == con;
-            });
-            if (iter != slot._consumers.end()) {
-                iter->state = state;
-            }
-        }
 
         ///Send signal
         /**
@@ -302,13 +301,8 @@ namespace ecstl {
             auto e = std::remove_if(_consumers.begin(), _consumers.end(), [&](auto &c){
                 Connection cc = c.consumer.lock();
                 if (cc) {
-                    if (c.state != ConnectionState::disabled) {
-                        cb(std::move(cc));
-                        if (c.state == ConnectionState::one_shot) {
-                            c.state = ConnectionState::disabled;
-                        }
-                    }
-                    return false;
+                    cb(std::move(cc));
+                    return c.mode == ConnectionMode::one_shot;
                 } else{
                     return true;
                 }                    
@@ -349,21 +343,18 @@ namespace ecstl {
 
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
-        friend Connection connect(SharedSignalSlot &slot, Fn &&fn, int priority = 0, ConnectionState state = ConnectionState::enabled) {
-            return connect(*slot._sslot,std::forward<Fn>(fn), priority, state);
+        friend Connection connect(SharedSignalSlot &slot, Fn &&fn, int priority = 0, ConnectionMode mode = ConnectionMode::normal) {
+            return connect(*slot._sslot,std::forward<Fn>(fn), priority, mode);
         }
 
-        friend Connection connect(SharedSignalSlot &slot, const Connection &con, int priority = 0, ConnectionState state = ConnectionState::enabled) {
-            return connect(*slot._sslot,con, priority, state);
+        friend Connection connect(SharedSignalSlot &slot, const Connection &con, int priority = 0, ConnectionMode mode = ConnectionMode::normal) {
+            return connect(*slot._sslot,con, priority, mode);
         }
 
         friend void disconnect(SharedSignalSlot &slot, const Connection &con) {
             return disconnect(*slot._sslot,con);
         }
 
-        friend void set_enable(SharedSignalSlot &slot, const Connection &con, ConnectionState state = ConnectionState::enabled) {
-            return set_enable(*slot._sslot, con, state);
-        }
 
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)

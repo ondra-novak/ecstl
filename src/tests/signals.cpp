@@ -207,10 +207,10 @@ int test7() {
     auto slot1 = SharedSignalSlot<void(int)>::create();    
     auto con1 = connect(slot1, [&](int v) noexcept {
         a = v;
-    },0,ConnectionState::one_shot);
+    },0,ConnectionMode::one_shot);
     auto con2 = connect(slot1, [&](int v) noexcept {
         b = v;
-    },0, ConnectionState::enabled);
+    },0, ConnectionMode::normal);
 
     slot1(10);
     CHECK_EQUAL(a,10);
@@ -220,7 +220,7 @@ int test7() {
     CHECK_EQUAL(a,10);
     CHECK_EQUAL(b,20);
 
-    set_enable(slot1, con1, ConnectionState::one_shot);
+    connect(slot1, con1,0, ConnectionMode::one_shot);
 
     slot1(30);
     CHECK_EQUAL(a,30);

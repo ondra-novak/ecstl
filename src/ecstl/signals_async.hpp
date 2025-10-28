@@ -11,11 +11,10 @@ namespace ecstl {
 
     ///Asynchronous signal dispatcher 
     /**
-     * @tparam _n_threads count of threads in the thread pool. This value must not be zero
+     * @tparam _n_threads count of threads in the thread pool.
      * Instance of this class can be shared. You need to use create() to create actual instance.
      * This argument can be zero if you need to manually process waiting tasks
-     * 
-     * 
+     * (this variant has its own specialization)
      */
     template<unsigned int _n_threads = 1>
     class AsyncSignalDispatcher {
