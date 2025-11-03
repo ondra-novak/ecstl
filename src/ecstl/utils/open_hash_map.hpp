@@ -48,13 +48,7 @@ namespace ecstl {
     template<typename K, typename V, typename Hash = std::hash<K>, typename Equal = std::equal_to<K> >
     class OpenHashMap {
     
-        
-        enum class State {
-            empty = 0, 
-            occupied,
-            tombstone
-        };
-
+       
         struct KeyValue {
             const K first;
             V second;
@@ -70,16 +64,15 @@ namespace ecstl {
 
     public:
 
+
         constexpr OpenHashMap() = default;
         constexpr OpenHashMap(std::size_t size, Hash hasher = {}, Equal equal = {})
             :_hasher(std::move(hasher))
             ,_eq(std::move(equal))
             ,_items(size)
-            ,_state(size+1)
+            ,_stateb(initStateArray(size))
             ,_size(0)
             {
-                for (std::size_t i = 0; i<size;++i) _state[i] = State::empty;                
-                _state[size] = State::occupied; //after last item there is occupied item serves as stop
             }
         
             
@@ -106,7 +99,7 @@ namespace ecstl {
             :_hasher(std::move(other._hasher))
             ,_eq(std::move(other._eq))
             ,_items(std::move(other._items))
-            ,_state(std::move(other._state))
+            ,_stateb(std::move(other._stateb))
             ,_size(std::move(other._size)) {
                 other._size = 0;
             }
@@ -116,7 +109,7 @@ namespace ecstl {
                 _hasher = std::move(other._hasher);
                 _eq = std::move(other._eq);
                 _items = std::move(other._items);
-                _state = std::move(other._state);
+                _stateb = std::move(other._stateb);
                 _size = std::move(other._size);
                 other._size = 0;
             }
@@ -150,14 +143,14 @@ namespace ecstl {
             constexpr iterator_base & operator++() {
                 do {
                     ++_offset;
-                } while (_owner->_state[_offset] != State::occupied);
+                } while (!_owner->is_occupied(_offset));
                 return *this;
             }   
 
             constexpr iterator_base & operator--() {
                 do {
                     --_offset;
-                } while (_offset > 0 && _owner->_items[_offset].state != State::occupied);
+                } while (_offset > 0 && !_owner->is_occupied(_offset));
                 return *this;
             }   
 
@@ -193,24 +186,17 @@ namespace ecstl {
                 expand();
             }
             auto idx = map_key(key);            
-            auto start = idx;
-            auto tombstone_idx = std::size_t(-1);
+            auto start = idx;            
             do {
-                switch (_state[idx]) {
-                case State::tombstone:
-                    if (tombstone_idx == std::size_t(-1)) tombstone_idx = idx;
-                    break;
-                case State::empty:
-                    if (tombstone_idx == std::size_t(-1)) tombstone_idx = idx;
-                    std::construct_at(&_items[tombstone_idx].key_value, std::move(key), V(std::forward<Args>(args)...));
-                    _state[tombstone_idx] = State::occupied;
-                    ++_size;
-                    return std::pair(iterator(this, tombstone_idx), true);
-                case State::occupied:
+                if (is_occupied(idx)) {
                     if (_eq(_items[idx].key_value.first, key)) {
                         return std::pair(iterator(this, idx), false);
                     }
-                    break;
+                } else {
+                    std::construct_at(&_items[idx].key_value, std::move(key), V(std::forward<Args>(args)...));
+                    set_occupied(idx);
+                    ++_size;
+                    return std::pair(iterator(this, idx), true);
                 }
                 idx = (idx+1) % _items.size();
             } while (idx != start);
@@ -226,7 +212,7 @@ namespace ecstl {
 
         constexpr iterator begin() {
             std::size_t idx = 0;
-            while (idx < _items.size() && _state[idx] != State::occupied) ++idx;
+            while (idx < _items.size() && !is_occupied(idx)) ++idx;
             return iterator(this, idx);
         }
 
@@ -236,7 +222,7 @@ namespace ecstl {
 
         constexpr const_iterator begin() const {
             std::size_t idx = 0;
-            while (idx < _items.size() && _state[idx] != State::occupied) ++idx;
+            while (idx < _items.size() && !is_occupied(idx)) ++idx;
             return const_iterator(this, idx);
         }
 
@@ -281,7 +267,7 @@ namespace ecstl {
         constexpr void clear() {
             std::size_t ofs = 0;
             for (auto &item: _items) { 
-                if (_state[ofs] == State::occupied) {
+                if (is_occupied(ofs)) {
                             std::destroy_at(&item.key_value);
                 }
                 ++ofs;
@@ -301,7 +287,7 @@ namespace ecstl {
         [[no_unique_address]] Equal _eq = {};
 
         FixedPrimitiveArray<Item> _items;
-        FixedPrimitiveArray<State> _state;
+        FixedPrimitiveArray<std::uint8_t> _stateb;
         std::size_t _size = 0;
 
         static constexpr std::array<size_t, 28> prime_sizes = {
@@ -343,20 +329,28 @@ namespace ecstl {
             *this = std::move(newMap);
         }
 
+        constexpr bool is_occupied(std::size_t idx) const {
+            return (_stateb[idx >> 3] & (1<<(idx & 7))) != 0;
+        }
+
+        constexpr void set_occupied(std::size_t idx) {
+            _stateb[idx >> 3] |= (1 << (idx & 7));
+        }
+
+        constexpr void set_not_occupied(std::size_t idx) {
+            _stateb[idx >> 3] &= ~(1 << (idx & 7));
+        }
+
         constexpr std::size_t find_index(const K &key) const {
             if (_items.size() == 0) return std::size_t(-1);
             auto idx = map_key(key);
             auto start = idx;
             do {
-                switch (_state[idx]) {
-                case State::tombstone:
-                    break;
-                case State::empty:
-                    return std::size_t(-1);
-                case State::occupied:
+                if (is_occupied(idx)) {
                     if (_eq(_items[idx].key_value.first, key)) {
                         return idx;
                     }
+                } else {
                     break;
                 }
                 idx = (idx+1) % _items.size();
@@ -364,11 +358,39 @@ namespace ecstl {
             return std::size_t(-1);
         }
 
+        constexpr void try_to_fill_gap(std::size_t idx) {
+            auto pos = idx;
+            do {
+                pos = (pos + 1)%_items.size();
+                if (!is_occupied(pos)) return;  //next is hole, we are done here
+                auto org_idx = map_key(_items[pos].key_value.first);
+                if (org_idx != pos) {   //candidate
+                    //try emplace found candidate, so it should fill found gap
+                    auto res = try_emplace(_items[pos].key_value.first, std::move(_items[pos].key_value.second));
+                    //check if it was inserted - it was probably inserted to found gap
+                    if (res.second) {
+                        //however we need to erase previous position
+                        //this can create new gap
+                        erase_index(pos);
+                        return;
+                    }
+                }                
+            } while (pos != idx);
+        }
+
         constexpr void erase_index(std::size_t idx) {
-            if (idx >= _items.size() || _state[idx] != State::occupied) return;
+            if (idx >= _items.size() || !is_occupied(idx)) return;
             std::destroy_at(&_items[idx].key_value);
-            _state[idx] = State::tombstone;
+            set_not_occupied(idx);
             --_size;
+            try_to_fill_gap(idx);
+        }
+
+        constexpr static FixedPrimitiveArray<std::uint8_t> initStateArray(std::size_t item_count) {            
+            FixedPrimitiveArray<std::uint8_t> r((item_count + 8)>>3);
+            for (auto &k : r) k = 0;
+            r[item_count >> 3] |= (1 << (item_count & 7));   
+            return r;         
         }
 
 
