@@ -21,7 +21,7 @@ namespace ecstl {
     public:
 
 
-        using Task = SignalConsumer<void()>;
+        using Task = SignalObserver<void()>;
         using PTask = std::unique_ptr<Task>;
 
         ///dispatch a task
@@ -38,7 +38,7 @@ namespace ecstl {
         void dispatch(Fn &&fn) {
             std::lock_guard _(_core->_mx);
             if (_core->_queue.empty()) _core->_cv.notify_one();
-            _core->_queue.push(std::make_unique<FunctorSignalConsumer<Fn, void()> >(std::forward<Fn>(fn)));            
+            _core->_queue.push(std::make_unique<FunctorSignalObserver<Fn, void()> >(std::forward<Fn>(fn)));            
         }
 
         ///Create dispatcher
@@ -134,7 +134,7 @@ namespace ecstl {
     public:
 
 
-        using Task = SignalConsumer<void()>;
+        using Task = SignalObserver<void()>;
         using PTask = std::unique_ptr<Task>;
 
         ///dispatch a task
@@ -150,7 +150,7 @@ namespace ecstl {
         requires(std::is_nothrow_invocable_v<Fn>)
         void dispatch(Fn &&fn) {
             std::lock_guard _(_core->_mx);
-            _core->_queue.push(std::make_unique<FunctorSignalConsumer<Fn, void()> >(std::forward<Fn>(fn)));            
+            _core->_queue.push(std::make_unique<FunctorSignalObserver<Fn, void()> >(std::forward<Fn>(fn)));            
         }
 
         ///Create dispatcher

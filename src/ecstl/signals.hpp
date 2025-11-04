@@ -7,23 +7,23 @@
 
 namespace ecstl {
 
-    template<typename Prototype> class SignalConsumer;
-    template<typename Fn, typename Prototype> class FunctorSignalConsumer;
+    template<typename Prototype> class SignalObserver;
+    template<typename Fn, typename Prototype> class FunctorSignalObserver;
 
     template<typename ... Args>
-    class SignalConsumer<void(Args ...)> {
+    class SignalObserver<void(Args ...)> {
     public:
-        virtual ~SignalConsumer() = default;
+        virtual ~SignalObserver() = default;
         virtual void operator()(Args ... args) noexcept = 0;
     };
 
     template<typename Fn, typename ... Args>
     requires (std::is_nothrow_invocable_v<Fn, Args...>)
-    class FunctorSignalConsumer<Fn, void(Args...)> : public SignalConsumer<void(Args...)> {
+    class FunctorSignalObserver<Fn, void(Args...)> : public SignalObserver<void(Args...)> {
     public:
         template<typename ... Ts>
         requires (std::is_constructible_v<Fn, Ts...>)
-        FunctorSignalConsumer(Ts && ... params): _fn(std::forward<Ts>(params)...) {}
+        FunctorSignalObserver(Ts && ... params): _fn(std::forward<Ts>(params)...) {}
         virtual void operator()(Args ... args) noexcept {
             _fn(std::forward<Args>(args)...);
         }
@@ -57,8 +57,8 @@ namespace ecstl {
      * 
      * @tparam Dispatcher specifies class responsible to dispatch the signal. Default value
      * (aka SyncSignalDispatchers) dispatches the signal synchronously in the callers thread.
-     * All signal consumers are called synchronously one after other. Alternatively you
-     * can install AsyncSignalDispatcher which allows to call consumers in a thread pool
+     * All signal Observers are called synchronously one after other. Alternatively you
+     * can install AsyncSignalDispatcher which allows to call Observers in a thread pool
      * 
      * Examples:
      * @code
@@ -107,22 +107,22 @@ namespace ecstl {
     template<typename Dispatcher, typename Lock, typename ... Args>
     class SignalSlot<void(Args...), Dispatcher, Lock> {
     public:
-        ///Abstract consumer
-        using Consumer = SignalConsumer<void(Args...)>;
+        ///Abstract Observer
+        using Observer = SignalObserver<void(Args...)>;
         ///Connection object 
-        /** Connection object is a smart pointer which points to Consumer object.
-         * The Consumer object acts as function, which directly calls the consumer.
-         * With this knowledge you can use Connection to selectively call this consumer
+        /** Connection object is a smart pointer which points to Observer object.
+         * The Observer object acts as function, which directly calls the Observer.
+         * With this knowledge you can use Connection to selectively call this Observer
          * outside of signal slot. If you need to disconnect the connection, just
          * call reset() on this object. However, the connection object can be shared
          * and you need to reset all shared instances to perform full disconnect
          */
-        using Connection = std::shared_ptr<Consumer>;
+        using Connection = std::shared_ptr<Observer>;
 
-        struct ConsumerReg {
+        struct ObserverReg {
             int priority;
             ConnectionMode mode;
-            std::weak_ptr<Consumer> consumer;
+            std::weak_ptr<Observer> Observer;
         };
 
 
@@ -148,25 +148,25 @@ namespace ecstl {
 
         ///Creates connection object from a callable, but doesn't connect this object
         /**
-         * @param fn function which consumes signal sent to this connection
+         * @param fn function which observes signal sent to this connection
          * @return Connection object. You can connect this object to signal slot later
          */
         template<typename Fn>        
         requires(std::is_nothrow_invocable_v<Fn, Args...>)
         static Connection create_connection(Fn &&fn) {
-            return std::make_shared<FunctorSignalConsumer<std::remove_cvref_t<Fn>, void(Args...)> >(std::forward<Fn>(fn));
+            return std::make_shared<FunctorSignalObserver<std::remove_cvref_t<Fn>, void(Args...)> >(std::forward<Fn>(fn));
         }
         
 
-        ///Connect consumer to signal slot
+        ///Connect Observer to signal slot
         /** 
-         * Connect consumer defined as function call to signal slot
+         * Connect Observer defined as function call to signal slot
          * 
          * @param slot reference to signal slot. Note that this function is actually global, not member function
          * (you need to use connect(slot, fn)
          * @param fn function compatible with slot's prototype. NOTE: The function must be noexcept
-         * @param priority specifies priority. Consumers are ordered from high priority (high number), to
-         * low priority(low number). If you ignore priority, consumers are called in order of connection
+         * @param priority specifies priority. Observers are ordered from high priority (high number), to
+         * low priority(low number). If you ignore priority, Observers are called in order of connection
          * @param mode specifies connection mode. It can be either normal or one_shot
          * @return Connection object. To keep connection active, you need to hold Connection object somewhere. Once
          * this object is destroyed, the connection is disconnected. 
@@ -183,15 +183,15 @@ namespace ecstl {
         }
 
 
-        ///Connect consumer to signal slot
+        ///Connect Observer to signal slot
         /** 
-         * Connect consumer defined as function call to signal slot
+         * Connect Observer defined as function call to signal slot
          * 
          * @param slot reference to signal slot. Note that this function is actually global, not member function
          * (you need to use connect(slot, fn)
          * @param fn function compatible with slot's prototype. NOTE: The function must be noexcept
-         * @param priority specifies priority. Consumers are ordered from high priority (high number), to
-         * low priority(low number). If you ignore priority, consumers are called in order of connection
+         * @param priority specifies priority. Observers are ordered from high priority (high number), to
+         * low priority(low number). If you ignore priority, Observers are called in order of connection
          * @param mode specifies connection mode. It can be either normal or one_shot
          * @return Connection object. To keep connection active, you need to hold Connection object somewhere. Once
          * this object is destroyed, the connection is disconnected. 
@@ -208,11 +208,11 @@ namespace ecstl {
         }
 
 
-        ///Connect consumer to signal slot
+        ///Connect Observer to signal slot
         /**
          * @param slot this slot
          * @param conn existing connection. You can use this function to connect existing connection
-         * to just another signal slot. It just creates new connection to the same consumer
+         * to just another signal slot. It just creates new connection to the same Observer
          * @param priority priority see original connect()
          * @param mode specifies connection mode. It can be either normal or one_shot
          * @return conn instance
@@ -220,12 +220,12 @@ namespace ecstl {
          */
         friend Connection connect(SignalSlot &slot, const Connection &conn, int priority =0, ConnectionMode mode = ConnectionMode::normal) {
             std::lock_guard _(slot._mx);
-            auto iter = std::upper_bound(slot._consumers.begin(), slot._consumers.end(), ConsumerReg(priority, {}, {}), priority_order);            
-            slot._consumers.insert(iter, ConsumerReg(priority, mode,  conn));
+            auto iter = std::upper_bound(slot._Observers.begin(), slot._Observers.end(), ObserverReg(priority, {}, {}), priority_order);            
+            slot._Observers.insert(iter, ObserverReg(priority, mode,  conn));
             return conn;
         }
 
-        ///Connect consumer to signel slot
+        ///Connect Observer to signel slot
         /** Shortcut to connect()
          * 
          * @see connect
@@ -241,11 +241,11 @@ namespace ecstl {
          */
         friend void disconnect(SignalSlot &slot, const Connection &con) {
             std::lock_guard _(slot._mx);
-            auto e = std::remove_if(slot._consumers.begin(), slot._consumers.end(), [&](const ConsumerReg &c){
-                Consumer cc = c.consumer.lock();
+            auto e = std::remove_if(slot._Observers.begin(), slot._Observers.end(), [&](const ObserverReg &c){
+                Observer cc = c.Observer.lock();
                 return !cc || cc == con;
             });
-            slot._consumers.erase(e, slot._consumers.end());
+            slot._Observers.erase(e, slot._Observers.end());
 
         }
 
@@ -257,19 +257,19 @@ namespace ecstl {
         template<typename ... Params>        
         requires (std::is_invocable_v<Dispatcher, Connection, Params...> )
         void operator()(Params && ... params) {
-            //retrieve TLS scratchpad to store active consumers
+            //retrieve TLS scratchpad to store active Observers
             SignalScratchpad &sp = SignalScratchpad::get_instance();
             //retrieve current position in the scratchpad (could be non-zero)
             std::size_t sp_pos = sp._lst.size();
-            //prepare all consumers into scratchpad
-            prepare_consumers([&](Connection &&con){
+            //prepare all Observers into scratchpad
+            prepare_Observers([&](Connection &&con){
                 sp._lst.push_back(con);
             });
             //mark end of scratchpad
             std::size_t sp_end = sp._lst.size();
             //process our content of the scratchpad and broadcast 
             for (std::size_t i =sp_pos; i != sp_end; ++i) {
-                Connection con = std::static_pointer_cast<Consumer>(sp._lst[i]);
+                Connection con = std::static_pointer_cast<Observer>(sp._lst[i]);
                 _dispatcher(std::move(con), params...);
             }
             //additional items of scartchpad should be released
@@ -282,7 +282,7 @@ namespace ecstl {
         
         [[no_unique_address]] Dispatcher _dispatcher = auto_create_dispatcher();
         [[no_unique_address]] Lock _mx;
-        std::vector<ConsumerReg> _consumers = {};
+        std::vector<ObserverReg> _Observers = {};
 
         static Dispatcher auto_create_dispatcher() requires(create_constructible<Dispatcher>) {
             return Dispatcher::create();
@@ -296,10 +296,10 @@ namespace ecstl {
 
 
         template<typename Cb>
-        void prepare_consumers(Cb &&cb) {
+        void prepare_Observers(Cb &&cb) {
             std::lock_guard _(_mx);
-            auto e = std::remove_if(_consumers.begin(), _consumers.end(), [&](auto &c){
-                Connection cc = c.consumer.lock();
+            auto e = std::remove_if(_Observers.begin(), _Observers.end(), [&](auto &c){
+                Connection cc = c.Observer.lock();
                 if (cc) {
                     cb(std::move(cc));
                     return c.mode == ConnectionMode::one_shot;
@@ -307,10 +307,10 @@ namespace ecstl {
                     return true;
                 }                    
             });
-            _consumers.erase(e, _consumers.end());
+            _Observers.erase(e, _Observers.end());
         }
 
-        static bool priority_order(const ConsumerReg&a, const ConsumerReg &b) {
+        static bool priority_order(const ObserverReg&a, const ObserverReg &b) {
             return a.priority > b.priority;
         }
     };
@@ -321,12 +321,12 @@ namespace ecstl {
     public:        
         using SignalSlot = SignalSlot<void(Args...), Dispatcher, Lock>;
         using Ref = std::shared_ptr<SignalSlot>;
-        using Consumer = typename SignalSlot::Consumer;
+        using Observer = typename SignalSlot::Observer;
         using Connection = typename SignalSlot::Connection;
 
         ///Construct empty shared signal slot. 
         /**
-         * Empty instance cannot be used to send signals and connect consumers. 
+         * Empty instance cannot be used to send signals and connect Observers. 
          * You need to call create() to create instance
          */
         SharedSignalSlot() = default;
