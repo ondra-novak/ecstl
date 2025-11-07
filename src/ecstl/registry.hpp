@@ -20,12 +20,22 @@ struct HashOfKey {
     constexpr std::size_t operator()(const T &val) const {return get_hash(val);}
 };
 
-
+///Stores entity name
+/**
+ * @note Entity name is droppable object. You need to call drop explicitly to clean memory
+ * (however, the Registry is calling drop automatically when)
+ * 
+ */
 class EntityName {
 public:
 
-    constexpr explicit EntityName(std::string_view n):name(n.begin(), n.end()) {}
-    constexpr operator std::string_view() const {return std::string_view(name.data(), name.size());}  
+    constexpr explicit EntityName(std::string_view n) {
+        _name = new char[n.size()+1];
+        *std::copy(n.begin(), n.end(), _name)  = 0;  
+        _size =n.size();      
+    }
+    constexpr operator std::string_view() const {return std::string_view(_name, _size);}  
+
     constexpr bool operator==(const EntityName &other) const {
         return static_cast<std::string_view>(*this) == static_cast<std::string_view>(other);
     }
@@ -34,8 +44,13 @@ public:
         return (io << static_cast<std::string_view>(en));
     }
 
+    constexpr void drop() {
+        delete [] _name;                
+    }
+
 protected:
-    std::vector<char> name;
+    char *_name = nullptr;
+    std::size_t _size = 0;
 };
 
 ///Concepts for component visitor functions
@@ -210,7 +225,7 @@ public:
      */ 
     constexpr Entity create_entity(std::string_view name) {
         auto e = create_entity();
-        set<EntityName>(e, EntityName{std::string(name)});
+        set<EntityName>(e, EntityName(name));
         return e;
     }
 
@@ -550,6 +565,7 @@ public:
                 new_pool->emplace(std::move(itm.first), std::move(itm.second));
             }
         });
+        ct->clear();    //clear content before destruction to prevent to call drop()
         mitr->second = std::move(new_pool_ptr);
         return true;
     }   

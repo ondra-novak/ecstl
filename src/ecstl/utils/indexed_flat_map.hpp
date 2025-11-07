@@ -100,6 +100,12 @@ public:
 
     }
 
+    constexpr void clear() {
+        _keys.clear();
+        _values.clear();
+        _index.clear();
+    }
+
 protected:
     OpenHashMap<K, std::size_t, Hasher, Equal> _index;
     std::vector<K> _keys;
